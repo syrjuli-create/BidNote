@@ -1,0 +1,14 @@
+bin/
+obj/
+.vs/
+*.user
+TestResults/
+
+# PC별 비밀 설정과 로컬 데이터
+appsettings.Local.json
+appsettings.Local.json.*
+!appsettings.Local.example.json
+src/BidNote.Web/data/
+*.db
+*.db-shm
+*.db-wal

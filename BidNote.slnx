@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BidNote.Application/BidNote.Application.csproj" />
+    <Project Path="src/BidNote.Domain/BidNote.Domain.csproj" />
+    <Project Path="src/BidNote.Infrastructure/BidNote.Infrastructure.csproj" />
+    <Project Path="src/BidNote.Web/BidNote.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BidNote.Tests/BidNote.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,47 @@
+﻿@inherits LayoutComponentBase
+@using BidNote.Infrastructure.G2B
+@using Microsoft.Extensions.Options
+@inject IOptions<G2BOptions> G2B
+
+<header class="topbar">
+    <div class="in">
+        <a class="logo" href="/"><span class="mark">입</span>입찰노트</a>
+        <nav class="mainnav" aria-label="대메뉴">
+            @foreach (var (href, name) in Menus)
+            {
+                <NavLink href="@href" Match="NavLinkMatch.Prefix">@name</NavLink>
+            }
+        </nav>
+        <div class="userbox">
+            @if (G2B.Value.UseFakeData)
+            {
+                <span class="sample" title="나라장터 API 키를 받기 전이라 가상 공고를 보여 줍니다">가상 데이터</span>
+            }
+            <a class="btn-ghost" href="/status">수집 현황</a>
+            <a class="btn-ghost" href="/me">내 정보</a>
+        </div>
+    </div>
+</header>
+
+<main>
+    @Body
+</main>
+
+<div id="blazor-error-ui" data-nosnippet>
+    오류가 발생했습니다.
+    <a href="." class="reload">새로고침</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private static readonly (string Href, string Name)[] Menus =
+    [
+        ("/notices", "공고 찾기"),
+        ("/mine", "내 입찰"),
+        ("/tools", "입찰 도구"),
+        ("/alerts", "알림"),
+        ("/library", "자료실"),
+        ("/help", "고객센터"),
+        ("/me", "내 정보"),
+    ];
+}

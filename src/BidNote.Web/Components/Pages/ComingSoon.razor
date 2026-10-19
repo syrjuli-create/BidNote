@@ -1,0 +1,28 @@
+@page "/notices"
+@page "/mine"
+@page "/alerts"
+@page "/library"
+@page "/help"
+@page "/me"
+@inject NavigationManager Nav
+
+<PageTitle>@Title · 입찰노트</PageTitle>
+
+<div class="stack">
+    <h1>@Title</h1>
+    <div class="empty">이 화면은 다음 단계에서 만듭니다. 지금은 메인 화면만 구현되어 있습니다.</div>
+    <p><a href="/">← 메인 화면으로</a></p>
+</div>
+
+@code {
+    private string Title => new Uri(Nav.Uri).AbsolutePath.TrimEnd('/') switch
+    {
+        "/notices" => "공고 찾기",
+        "/mine" => "내 입찰",
+        "/alerts" => "알림",
+        "/library" => "자료실",
+        "/help" => "고객센터",
+        "/me" => "내 정보",
+        _ => "준비 중",
+    };
+}

@@ -1,0 +1,196 @@
+﻿@page "/"
+@using BidNote.Application.Home
+@inject IHomeQueries HomeQueries
+@inject TimeProvider Clock
+@inject NavigationManager Nav
+@inject IConfiguration Config
+
+<PageTitle>입찰노트</PageTitle>
+
+<form method="get" action="/" class="home">
+    @if (!string.IsNullOrWhiteSpace(heroVideo))
+    {
+        <section class="hero" style="background-image: url('@heroPoster')">
+            <video class="hero-video" autoplay muted loop playsinline poster="@heroPoster" aria-hidden="true">
+                <source src="@heroVideo" type="video/webm" />
+            </video>
+            <div class="hero-text">
+                <p class="eyebrow">@Display.DateText(now) 기준</p>
+                <h1>오늘 참여할 공고를 찾아보세요</h1>
+                @if (summary is not null)
+                {
+                    <p>진행 중 <b>@summary.ActiveCount</b>건 · 내일까지 마감 <b>@summary.ClosingSoonCount</b>건 · 새 공고 <b>@summary.NewCount</b>건</p>
+                }
+            </div>
+        </section>
+    }
+
+    <section class="searchbar">
+        <div class="searchfield">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+            <input type="text" name="q" value="@Q" placeholder="공고명이나 발주기관으로 검색 (예: 화장실, ○○교육지원청)" aria-label="공고 검색어" />
+        </div>
+        <button class="btn" type="submit">검색</button>
+        @if (Sort is not null) { <input type="hidden" name="sort" value="@Sort" /> }
+    </section>
+
+    <div class="layout">
+        <aside class="panel filters" aria-label="공고 필터">
+            <fieldset>
+                <legend>지역</legend>
+                @foreach (var r in result?.Regions ?? [])
+                {
+                    <label class="check"><input type="checkbox" name="region" value="@r.Value" checked="@(Region?.Contains(r.Value) == true)" /> @r.Value <span class="cnt">@r.Count</span></label>
+                }
+            </fieldset>
+            <label class="f">업종(면허)
+                <select name="license">
+                    <option value="">전체 업종</option>
+                    @foreach (var l in result?.Licenses ?? [])
+                    {
+                        <option value="@l.Value" selected="@(License == l.Value)">@l.Value (@l.Count)</option>
+                    }
+                </select>
+            </label>
+            <label class="f">기초금액
+                <select name="amount">
+                    @foreach (var (v, t) in AmountOptions)
+                    {
+                        <option value="@v" selected="@(Amount == v)">@t</option>
+                    }
+                </select>
+            </label>
+            <label class="f">마감
+                <select name="due">
+                    @foreach (var (v, t) in DueOptions)
+                    {
+                        <option value="@v" selected="@(Due?.ToString() == v)">@t</option>
+                    }
+                </select>
+            </label>
+            <label class="check"><input type="checkbox" name="corrected" value="true" checked="@(Corrected == true)" /> 정정 공고만</label>
+            <label class="check"><input type="checkbox" name="new" value="true" checked="@(IsNew == true)" /> 최근 5일 새 공고만</label>
+            <div class="row">
+                <button class="btn" type="submit">적용</button>
+                <a class="btn line" href="/">초기화</a>
+            </div>
+        </aside>
+
+        <section class="results">
+            @if (summary is not null)
+            {
+                <nav class="quick" aria-label="빠른 보기">
+                    <a href="/" class="@(IsPlain ? "on" : "")"><b>@summary.ActiveCount</b> 진행 중</a>
+                    <a href="/?due=1" class="hot @(Due == 1 && OnlyOne ? "on" : "")"><b>@summary.ClosingSoonCount</b> 내일까지 마감</a>
+                    <a href="/?new=true" class="@(IsNew == true && OnlyOne ? "on" : "")"><b>@summary.NewCount</b> 새 공고</a>
+                    <a href="/?corrected=true" class="@(Corrected == true && OnlyOne ? "on" : "")"><b>@summary.CorrectedCount</b> 정정</a>
+                </nav>
+            }
+
+            <div class="listhead">
+                <h2>공고 @(result?.Items.Count ?? 0)건</h2>
+                <span class="sorts">
+                    @foreach (var (v, t) in SortOptions)
+                    {
+                        <a href="@Nav.GetUriWithQueryParameter("sort", v)" class="@(CurrentSort == v ? "on" : "")">@t</a>
+                    }
+                </span>
+            </div>
+
+            @if (result is null)
+            {
+                <div class="empty">불러오는 중입니다.</div>
+            }
+            else if (summary?.ActiveCount == 0)
+            {
+                <div class="empty">아직 수집한 공고가 없습니다. 프로그램을 켜 두면 잠시 뒤 자동으로 수집합니다.</div>
+            }
+            else if (result.Items.Count == 0)
+            {
+                <div class="empty">조건에 맞는 공고가 없습니다. <a href="/">필터 초기화</a></div>
+            }
+            else
+            {
+                <div class="tbl">
+                    <table>
+                        <thead>
+                            <tr><th>마감</th><th>공고명 · 발주기관</th><th>지역·업종</th><th class="r">기초금액</th><th>마감 일시</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var n in result.Items)
+                            {
+                                <tr>
+                                    <td><span class="dday @Display.DDayLevel(n.DueAt, now)">@Display.DDay(n.DueAt, now)</span></td>
+                                    <td>
+                                        <a class="tname" href="/notices/@n.Id">@n.Name</a>
+                                        @if (n.CorrectionCount > 0) { <span class="chip warn">정정 @(n.CorrectionCount)차</span> }
+                                        @if (n.PostedAt >= now - HomeRules.NewWindow) { <span class="chip new">새 공고</span> }
+                                        <span class="tsub">@n.Agency · <span class="num">@n.BidNo</span></span>
+                                    </td>
+                                    <td class="nw">@n.Region<span class="tsub">@n.License</span></td>
+                                    <td class="r num">@Display.Eok(n.BasePrice)</td>
+                                    <td class="num nw">@Display.ShortDateTime(n.DueAt)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
+            @if (summary?.LastCollectedAt is { } last)
+            {
+                <p class="tsub">마지막 수집 @Display.DateTimeText(last)</p>
+            }
+        </section>
+    </div>
+</form>
+
+@code {
+    [SupplyParameterFromQuery(Name = "q")] public string? Q { get; set; }
+    [SupplyParameterFromQuery(Name = "region")] public string[]? Region { get; set; }
+    [SupplyParameterFromQuery(Name = "license")] public string? License { get; set; }
+    [SupplyParameterFromQuery(Name = "amount")] public string? Amount { get; set; }
+    [SupplyParameterFromQuery(Name = "due")] public int? Due { get; set; }
+    [SupplyParameterFromQuery(Name = "corrected")] public bool? Corrected { get; set; }
+    [SupplyParameterFromQuery(Name = "new")] public bool? IsNew { get; set; }
+    [SupplyParameterFromQuery(Name = "sort")] public string? Sort { get; set; }
+
+    private HomeSummary? summary;
+    private NoticeSearchResult? result;
+    private DateTime now;
+    private string? heroVideo;
+    private string? heroPoster;
+
+    private static readonly (string Value, string Text)[] AmountOptions = [("", "전체 금액"), ("s", "1억 미만"), ("m", "1억~5억"), ("l", "5억 이상")];
+    private static readonly (string Value, string Text)[] DueOptions = [("", "전체 기간"), ("0", "오늘 마감"), ("1", "내일까지"), ("3", "3일 이내"), ("7", "7일 이내")];
+    private static readonly (string Value, string Text)[] SortOptions = [("due", "마감 임박순"), ("amount", "금액 높은순"), ("new", "최신 공고순")];
+
+    private string CurrentSort => Sort is "amount" or "new" ? Sort : "due";
+
+    private bool IsPlain => string.IsNullOrEmpty(Q) && (Region?.Length ?? 0) == 0 && string.IsNullOrEmpty(License)
+        && string.IsNullOrEmpty(Amount) && Due is null && Corrected != true && IsNew != true;
+
+    /// <summary>빠른 보기 하나만 걸린 상태인지 (다른 필터가 같이 걸렸으면 강조하지 않는다).</summary>
+    private bool OnlyOne => string.IsNullOrEmpty(Q) && (Region?.Length ?? 0) == 0 && string.IsNullOrEmpty(License) && string.IsNullOrEmpty(Amount)
+        && (Due is null ? 0 : 1) + (Corrected == true ? 1 : 0) + (IsNew == true ? 1 : 0) == 1;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        now = Clock.GetLocalNow().DateTime;
+        heroVideo = Config["Home:HeroVideo"];
+        heroPoster = Config["Home:HeroPoster"];
+        var filter = new NoticeFilter
+        {
+            Keyword = Q,
+            Regions = Region ?? [],
+            License = License,
+            Amount = Amount switch { "s" => AmountRange.Under100M, "m" => AmountRange.From100MTo500M, "l" => AmountRange.Over500M, _ => AmountRange.Any },
+            DueWithinDays = Due is >= 0 ? Due : null,
+            CorrectedOnly = Corrected == true,
+            NewOnly = IsNew == true,
+            Sort = CurrentSort switch { "amount" => NoticeSort.AmountHigh, "new" => NoticeSort.Newest, _ => NoticeSort.DueSoon },
+        };
+        summary = await HomeQueries.GetSummaryAsync(now, CancellationToken.None);
+        result = await HomeQueries.SearchAsync(filter, now, CancellationToken.None);
+    }
+}

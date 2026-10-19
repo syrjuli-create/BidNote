@@ -1,0 +1,79 @@
+using BidNote.Application.Collecting;
+
+namespace BidNote.Web.Services;
+
+/// <summary>
+/// 켜져 있는 동안 주기적으로 공고를 수집한다. 켤 때는 마지막으로 성공한 시각부터 이어 받아
+/// PC가 꺼져 있던 동안 빠진 공고를 채운다. 주기·기간은 수집 설정 화면에서 바꾸면 다음 주기부터 적용된다.
+/// </summary>
+public sealed class CollectorHostedService(
+    IServiceScopeFactory scopeFactory,
+    CollectorState state,
+    CollectorSignal signal,
+    TimeProvider timeProvider,
+    ILogger<CollectorHostedService> logger) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var settings = await LoadSettingsAsync(stoppingToken);
+        DateTime from = CollectorRules.StartFrom(timeProvider.GetLocalNow().DateTime, settings.LastSuccessTo, settings.BackfillDays);
+        string trigger = settings.LastSuccessTo is null ? "자동(처음)" : "자동(이어 받기)";
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            DateTime to = timeProvider.GetLocalNow().DateTime;
+            if (await RunAsync(from, to, trigger, stoppingToken)) from = to;
+
+            settings = await LoadSettingsAsync(stoppingToken);
+            int? backfillDays = await WaitAsync(TimeSpan.FromMinutes(settings.IntervalMinutes), stoppingToken);
+            if (backfillDays is { } days)
+            {
+                // 다시 받기는 그 기간만 받고, 원래 이어 받던 위치(from)는 그대로 둔다.
+                DateTime now = timeProvider.GetLocalNow().DateTime;
+                await RunAsync(now.AddDays(-days), now, $"다시 받기({days}일)", stoppingToken);
+            }
+            trigger = "자동";
+        }
+    }
+
+    /// <summary>주기만큼 기다린다. 그 사이 다시 받기 요청이 오면 바로 돌아와 그 일수를 준다.</summary>
+    private async Task<int?> WaitAsync(TimeSpan interval, CancellationToken stoppingToken)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        var delay = Task.Delay(interval, timeProvider, cts.Token);
+        var request = signal.Reader.WaitToReadAsync(cts.Token).AsTask();
+        var done = await Task.WhenAny(delay, request);
+        await cts.CancelAsync();
+        stoppingToken.ThrowIfCancellationRequested();
+        if (done == request && signal.Reader.TryRead(out int days)) return days;
+        return null;
+    }
+
+    private async Task<bool> RunAsync(DateTime from, DateTime to, string trigger, CancellationToken stoppingToken)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var service = scope.ServiceProvider.GetRequiredService<CollectService>();
+            var result = await service.CollectAsync(from, to, stoppingToken);
+            await scope.ServiceProvider.GetRequiredService<ICollectorSettingsStore>().MarkSuccessAsync(to, stoppingToken);
+            logger.LogInformation("수집 결과({Trigger}): 새 공고 {Added}건, 변경 {Changed}건, 변화 없음 {Unchanged}건, 기초금액 {BasePrices}건, 원문 저장 {RawSaved}건",
+                trigger, result.Added, result.Changed, result.Unchanged, result.BasePricesUpdated, result.RawSaved);
+            state.Record(new CollectRun(to, trigger, result, null));
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // 실패한 구간은 from을 그대로 두어 다음 주기에 다시 받는다.
+            logger.LogError(ex, "공고 수집 실패({Trigger}): {From:yyyy-MM-dd HH:mm}~{To:yyyy-MM-dd HH:mm}. 다음 주기에 다시 시도합니다.", trigger, from, to);
+            state.Record(new CollectRun(to, trigger, null, ex.Message));
+            return false;
+        }
+    }
+
+    private async Task<CollectorSettingsValues> LoadSettingsAsync(CancellationToken stoppingToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<ICollectorSettingsStore>().GetAsync(stoppingToken);
+    }
+}

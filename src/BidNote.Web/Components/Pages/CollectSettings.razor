@@ -1,0 +1,131 @@
+@page "/settings/collect"
+@using BidNote.Application.Collecting
+@using BidNote.Web.Services
+@inject ICollectorSettingsStore Store
+@inject CollectorSignal Signal
+@inject ILogger<CollectSettings> Logger
+
+<PageTitle>수집 설정 · 입찰노트</PageTitle>
+
+<div class="stack narrow">
+    <div class="listhead">
+        <h1>수집 설정</h1>
+        <a class="btn line" href="/status">수집 현황 보기</a>
+    </div>
+
+    @if (message is not null)
+    {
+        <div class="notice @(failed ? "bad" : "")">@message</div>
+    }
+
+    <form class="panel stack" method="post" @onsubmit="SaveAsync" @formname="collect-settings">
+        <AntiforgeryToken />
+        <h2 class="sub">자동 수집</h2>
+
+        <fieldset class="choice">
+            <legend>처음 켤 때 받을 기간</legend>
+            <p class="tsub">이어 받을 기록이 없을 때만 씁니다. 평소에는 마지막으로 받은 시각부터 이어 받습니다.</p>
+            <div class="seg">
+                @foreach (int d in CollectorRules.BackfillChoices)
+                {
+                    <label><input type="radio" name="Form.BackfillDays" value="@d" checked="@(Form.BackfillDays == d)" /><span>@(d)일<small>호출 약 @CollectorRules.EstimateCalls(d)회</small></span></label>
+                }
+            </div>
+        </fieldset>
+
+        <fieldset class="choice">
+            <legend>수집 주기</legend>
+            <p class="tsub">짧을수록 새 공고를 빨리 받지만 호출이 늘어납니다. 하루 예상 호출은 기간을 이어 받는 양 기준입니다.</p>
+            <div class="seg">
+                @foreach (int m in CollectorRules.IntervalChoices)
+                {
+                    <label><input type="radio" name="Form.IntervalMinutes" value="@m" checked="@(Form.IntervalMinutes == m)" /><span>@IntervalText(m)<small>하루 약 @(DailyCalls(m))회</small></span></label>
+                }
+            </div>
+        </fieldset>
+
+        <div class="row">
+            <button class="btn" type="submit">저장</button>
+            <span class="tsub">저장하면 프로그램을 다시 켜지 않아도 다음 수집부터 적용됩니다.</span>
+        </div>
+    </form>
+
+    <form class="panel stack" method="post" @onsubmit="Backfill" @formname="collect-backfill">
+        <AntiforgeryToken />
+        <h2 class="sub">과거 기간 다시 받기</h2>
+        <p class="tsub">처음 쓰기 시작했거나, 빠진 공고가 있을 것 같을 때 씁니다. 이미 받은 공고는 바뀐 것만 저장하므로 원문이 중복으로 쌓이지 않습니다.</p>
+        <div class="seg">
+            @foreach (int d in CollectorRules.BackfillChoices)
+            {
+                <label><input type="radio" name="BackfillForm.Days" value="@d" checked="@(BackfillForm.Days == d)" /><span>최근 @(d)일<small>호출 약 @CollectorRules.EstimateCalls(d)회</small></span></label>
+            }
+        </div>
+        <div class="row">
+            <button class="btn line" type="submit">다시 받기 시작</button>
+            <span class="tsub">백그라운드에서 받습니다. 30일이면 몇 분 걸릴 수 있습니다.</span>
+        </div>
+    </form>
+
+    @if (current is not null)
+    {
+        <p class="tsub">마지막으로 수집에 성공한 시각: @(current.LastSuccessTo is { } t ? Display.DateTimeText(t) : "아직 없음")</p>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromForm(FormName = "collect-settings")] private SettingsInput Form { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "collect-backfill")] private BackfillInput BackfillForm { get; set; } = new();
+
+    private CollectorSettingsValues? current;
+    private string? message;
+    private bool failed;
+
+    public sealed class SettingsInput
+    {
+        public int BackfillDays { get; set; }
+        public int IntervalMinutes { get; set; }
+    }
+
+    public sealed class BackfillInput
+    {
+        public int Days { get; set; } = 7;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        current = await Store.GetAsync(CancellationToken.None);
+        // 폼을 보낸 요청이 아니면 저장된 값으로 채운다.
+        if (Form.BackfillDays == 0) Form.BackfillDays = current.BackfillDays;
+        if (Form.IntervalMinutes == 0) Form.IntervalMinutes = current.IntervalMinutes;
+    }
+
+    private async Task SaveAsync()
+    {
+        try
+        {
+            await Store.SaveAsync(Form.BackfillDays, Form.IntervalMinutes, CancellationToken.None);
+            current = await Store.GetAsync(CancellationToken.None);
+            message = $"저장했습니다. 처음 받을 기간 {Form.BackfillDays}일, 수집 주기 {IntervalText(Form.IntervalMinutes)}. 다음 수집부터 적용됩니다.";
+            failed = false;
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            Logger.LogWarning(ex, "수집 설정 값이 범위를 벗어남");
+            message = ex.Message.Split(" (Parameter")[0];
+            failed = true;
+        }
+    }
+
+    private void Backfill()
+    {
+        int days = Math.Clamp(BackfillForm.Days, CollectorRules.MinBackfillDays, CollectorRules.MaxBackfillDays);
+        Signal.RequestBackfill(days);
+        message = $"최근 {days}일치를 백그라운드에서 받기 시작합니다. 결과는 수집 현황에서 확인하세요.";
+        failed = false;
+    }
+
+    private static string IntervalText(int minutes) => minutes >= 60 ? $"{minutes / 60}시간" : $"{minutes}분";
+
+    /// <summary>주기마다 그동안 쌓인 만큼(대개 1페이지씩)을 받으므로 API 3개 × 하루 횟수로 어림잡는다.</summary>
+    private static int DailyCalls(int intervalMinutes) => 3 * (1440 / intervalMinutes);
+}

@@ -1,0 +1,213 @@
+@page "/notices/{Id:int}"
+@using System.Globalization
+@using System.Text.RegularExpressions
+@using BidNote.Application.Notices
+@using BidNote.Domain.Bidding
+@using BidNote.Domain.Notices
+@inject INoticeDetailQueries Queries
+@inject TimeProvider Clock
+
+<PageTitle>@(notice?.Name ?? "공고 상세") · 입찰노트</PageTitle>
+
+<div class="stack detail">
+    <a class="back" href="javascript:history.back()">← 목록으로</a>
+
+    @if (notice is null)
+    {
+        <div class="empty">공고를 찾을 수 없습니다. 목록에서 다시 골라 주세요. <a href="/">메인 화면</a></div>
+    }
+    else
+    {
+        <header class="dhead">
+            <div class="chips">
+                <span class="dday @Display.DDayLevel(notice.DueAt, now)">@(notice.DueAt > now ? Display.DDay(notice.DueAt, now) : "마감")</span>
+                @if (!notice.IsActive) { <span class="chip warn">취소 공고</span> }
+                @if (notice.CorrectionCount > 0) { <span class="chip warn">정정 @(notice.CorrectionCount)차</span> }
+                @if (notice.IsRebid) { <span class="chip warn">재공고</span> }
+                @if (notice.PostedAt >= now - BidNote.Application.Home.HomeRules.NewWindow) { <span class="chip new">새 공고</span> }
+            </div>
+            <h1>@notice.Name</h1>
+            <p class="tsub">@notice.Agency · <span class="num">@notice.BidNo-@notice.BidSeq</span> · 마지막 확인 @Display.DateTimeText(notice.LastCheckedAt)</p>
+            @if (notice.DetailUrl.Length > 0)
+            {
+                <a class="btn" href="@notice.DetailUrl" target="_blank" rel="noopener">나라장터 원문 보기</a>
+            }
+            <a class="btn line" href="/tools/calc?notice=@notice.Id">이 공고로 계산</a>
+        </header>
+
+        <div class="dgrid">
+            <section class="panel">
+                <h2 class="sub">일정·기관</h2>
+                <dl class="kv">
+                    <div><dt>입찰 마감</dt><dd class="num">@Display.DateTimeText(notice.DueAt)</dd></div>
+                    <div><dt>개찰 일시</dt><dd class="num">@Display.DateTimeText(notice.OpenAt)</dd></div>
+                    <div><dt>공고일</dt><dd class="num">@Display.DateTimeText(notice.PostedAt)</dd></div>
+                    <div><dt>발주기관</dt><dd>@notice.Agency</dd></div>
+                    <div><dt>수요기관</dt><dd>@Or(notice.DemandAgency)</dd></div>
+                    <div><dt>현장 지역</dt><dd>@Or(notice.SiteRegionName)</dd></div>
+                    @foreach (var e in notice.Extras.Where(e => !MoneyLabels.Contains(e.Label)))
+                    {
+                        <div><dt>@e.Label</dt><dd>@e.Value</dd></div>
+                    }
+                </dl>
+            </section>
+
+            <section class="panel">
+                <h2 class="sub">금액</h2>
+                <dl class="kv">
+                    <div class="big"><dt>기초금액</dt><dd class="num">@(notice.BasePrice is { } b ? Display.Won(b) + "원" : "미공개")</dd></div>
+                    <div><dt>예비가격 범위</dt><dd>@Or(notice.ReservePriceRange)</dd></div>
+                    <div><dt>낙찰하한율</dt><dd class="num">@(notice.LowerLimitRate > 0 ? notice.LowerLimitRate.ToString("0.###", CultureInfo.InvariantCulture) + "%" : "-")</dd></div>
+                    <div><dt>A값</dt><dd class="num">@(notice.AValue is { } a ? Display.Won(a) + "원" : "적용 안 함")</dd></div>
+                    <div><dt>순공사원가</dt><dd class="num">@(notice.NetCost is { } net ? Display.Won(net) + "원" : "-")</dd></div>
+                    <div><dt>기초금액 공개</dt><dd class="num">@(notice.BasePriceOpenedAt is { } o ? Display.DateTimeText(o) : "-")</dd></div>
+                    @foreach (var e in notice.Extras.Where(e => MoneyLabels.Contains(e.Label)))
+                    {
+                        <div><dt>@e.Label</dt><dd class="num">@e.Value</dd></div>
+                    }
+                </dl>
+            </section>
+        </div>
+
+        <section class="panel">
+            <h2 class="sub">면허(업종) 제한</h2>
+            @if (notice.Licenses.Count == 0)
+            {
+                <p class="tsub">면허 제한 정보가 없습니다.@(notice.License.Length > 0 ? $" 대표 업종: {notice.License}" : "")</p>
+            }
+            else
+            {
+                <div class="lgroups">
+                    @for (int i = 0; i < notice.Licenses.Count; i++)
+                    {
+                        var g = notice.Licenses[i];
+                        @if (i > 0) { <span class="and">그리고</span> }
+                        <div class="lgroup">
+                            @for (int j = 0; j < g.Names.Count; j++)
+                            {
+                                @if (j > 0) { <span class="or">또는</span> }
+                                <span class="lic">@g.Names[j]</span>
+                            }
+                        </div>
+                    }
+                </div>
+                <p class="tsub">같은 줄은 그중 하나만, 줄이 여러 개면 모두 갖춰야 하는 것으로 봅니다. 정확한 조건은 공고문을 확인하세요.</p>
+            }
+        </section>
+
+        <section class="panel">
+            <h2 class="sub">사정률별 투찰금액 <span class="tsub">@RangeNote</span></h2>
+            @if (notice.BasePrice is null)
+            {
+                <p class="tsub">기초금액이 공개되면 계산해 보여 줍니다.</p>
+            }
+            else if (notice.LowerLimitRate <= 0)
+            {
+                <p class="tsub">낙찰하한율 정보가 없어 계산할 수 없습니다.</p>
+            }
+            else
+            {
+                <div class="tbl">
+                    <table>
+                        <thead><tr><th class="r">사정률</th><th class="r">예정가격</th><th class="r">투찰금액</th><th>적용 산식</th></tr></thead>
+                        <tbody>
+                            @foreach (var (rate, calc) in BidRows())
+                            {
+                                <tr class="@(Math.Abs(rate - 100) < 0.001 ? "mid" : "")">
+                                    <td class="r num">@rate.ToString("0.0", CultureInfo.InvariantCulture)%</td>
+                                    <td class="r num">@Display.Won((long)Math.Round(calc.PlannedPrice))</td>
+                                    <td class="r num"><b>@Display.Won(calc.BidAmount)</b></td>
+                                    <td>@(calc.UsedNetCostFloor ? "순공사원가 하한" : calc.AValueAmount is not null ? "A값 적용" : "기본")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <p class="tsub">투찰금액 = (기초금액 × 사정률 − A값) × 낙찰하한율 + A값, 원 단위 올림. 순공사원가 하한(× 98%)보다 낮으면 하한 금액. 참고용 계산이며 최종 금액은 공고문 기준을 따르세요.</p>
+            }
+        </section>
+
+        <section class="panel">
+            <h2 class="sub">정정 이력</h2>
+            @if (notice.Changes.Count == 0)
+            {
+                <p class="tsub">수집한 뒤로 바뀐 내용이 없습니다.</p>
+            }
+            else
+            {
+                <ol class="timeline">
+                    @foreach (var c in notice.Changes)
+                    {
+                        <li>
+                            <div class="when num">@Display.DateTimeText(c.DetectedAt)</div>
+                            <div>
+                                <b>@ChangeText(c.Type)</b> <span class="tsub num" style="display:inline">차수 @c.FromSeq → @c.ToSeq</span>
+                                @if (c.Fields.Count == 0)
+                                {
+                                    <p class="tsub">주요 항목 외의 내용이 바뀌었습니다 (첨부 문서 등). 원문에서 확인하세요.</p>
+                                }
+                                else
+                                {
+                                    <ul class="changes">
+                                        @foreach (var f in c.Fields)
+                                        {
+                                            <li><span class="lbl">@f.Label</span> <s>@f.Before</s> → <b>@f.After</b></li>
+                                        }
+                                    </ul>
+                                }
+                            </div>
+                        </li>
+                    }
+                </ol>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private NoticeDetail? notice;
+    private DateTime now;
+    private static readonly HashSet<string> MoneyLabels = ["예산금액", "추정가격"];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        now = Clock.GetLocalNow().DateTime;
+        notice = await Queries.GetAsync(Id, CancellationToken.None);
+    }
+
+    private static string Or(string s) => string.IsNullOrWhiteSpace(s) ? "-" : s;
+
+    private (double Low, double High, bool Known) Range()
+    {
+        var m = Regex.Matches(notice!.ReservePriceRange, @"[-+]?\d+(\.\d+)?");
+        if (m.Count >= 2
+            && double.TryParse(m[0].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double lo)
+            && double.TryParse(m[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double hi) && hi > lo)
+            return (lo, hi, true);
+        return (-3, 3, false);
+    }
+
+    private string RangeNote => notice is null ? "" : Range() is var r && r.Known
+        ? $"(예비가격 범위 {r.Low:+0.#;-0.#}% ~ {r.High:+0.#;-0.#}% 안에서 0.5% 간격)"
+        : "(예비가격 범위를 몰라 ±3%로 가정)";
+
+    private IEnumerable<(double Rate, BidCalculation Calc)> BidRows()
+    {
+        var (low, high, _) = Range();
+        for (double d = low; d <= high + 1e-9; d += 0.5)
+        {
+            double rate = 100 + d;
+            yield return (rate, BidCalculator.Calculate(new BidInput(notice!.BasePrice!.Value, rate, notice.LowerLimitRate, notice.AValue ?? 0, notice.NetCost ?? 0)));
+        }
+    }
+
+    private static string ChangeText(NoticeChangeType t) => t switch
+    {
+        NoticeChangeType.Corrected => "정정 공고",
+        NoticeChangeType.Rebid => "재공고",
+        NoticeChangeType.Cancelled => "취소 공고",
+        _ => "내용 변경",
+    };
+}

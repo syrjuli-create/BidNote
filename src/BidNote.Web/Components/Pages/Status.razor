@@ -1,0 +1,144 @@
+@page "/status"
+@using BidNote.Application.Collecting
+@using BidNote.Web.Services
+@inject ICollectStatsQueries StatsQueries
+@inject IApiUsageTracker Usage
+@inject CollectService Collector
+@inject CollectorState State
+@inject TimeProvider Clock
+@inject ILogger<Status> Logger
+@inject Microsoft.Extensions.Options.IOptions<ApiLimitOptions> LimitOptions
+
+<PageTitle>수집 현황 · 입찰노트</PageTitle>
+
+<div class="stack">
+    <div class="listhead">
+        <h1>수집 현황</h1>
+        <a class="btn line" href="/settings/collect">수집 설정</a>
+        <form method="post" @onsubmit="RunNowAsync" @formname="collect-now">
+            <AntiforgeryToken />
+            <button class="btn" type="submit">지금 수집</button>
+        </form>
+    </div>
+
+    @if (message is not null)
+    {
+        <div class="notice @(failed ? "bad" : "")">@message</div>
+    }
+
+    @if (stats is not null)
+    {
+        <div class="quick">
+            <div class="statbox"><b>@stats.NoticeCount</b>저장된 공고</div>
+            <div class="statbox"><b>@stats.RawCount</b>저장된 원문</div>
+            <div class="statbox"><b>@stats.HistoryCount</b>변경 이력</div>
+            <div class="statbox"><b>@SizeText(stats.DatabaseBytes)</b>DB 파일 크기</div>
+        </div>
+        <p class="tsub">마지막 원문 저장: @(stats.LastRawSavedAt is { } t ? Display.DateTimeText(t) : "없음")</p>
+    }
+
+    <section>
+        <h2 class="sub">오늘 API 사용량 <span class="tsub">(하루 한도의 @((int)(stopAt * 100))%에 닿으면 그날은 자동으로 호출을 멈춥니다. 자정에 0부터 다시 셉니다.)</span></h2>
+        <div class="tbl">
+            <table>
+                <thead><tr><th>API</th><th class="r">오늘 호출</th><th class="r">하루 한도</th><th style="width:34%">사용률</th><th>상태</th><th>마지막 호출</th></tr></thead>
+                <tbody>
+                    @foreach (var u in usage)
+                    {
+                        string level = u.Ratio >= stopAt ? "stop" : u.Ratio >= 0.8 ? "warn" : "ok";
+                        <tr>
+                            <td>@Display.ApiLabel(u.ApiName)<span class="tsub num">@u.ApiName</span></td>
+                            <td class="r num"><b>@u.Count.ToString("N0")</b></td>
+                            <td class="r num">@u.DailyLimit.ToString("N0")</td>
+                            <td><div class="meter @level"><span style="width:@(Math.Min(100, u.Ratio * 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%"></span></div><span class="tsub num">@((u.Ratio * 100).ToString("0.0"))%</span></td>
+                            <td><span class="state @level">@(level switch { "stop" => "오늘 중단", "warn" => "주의", _ => "정상" })</span></td>
+                            <td class="num nw">@(u.LastCalledAt is { } t ? Display.ShortDateTime(t) : "-")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="panel howto">
+        <h2>원문 저장이 줄었는지 확인하는 방법</h2>
+        <ol>
+            <li>위의 <b>저장된 원문</b> 숫자를 기억해 둡니다.</li>
+            <li><b>[지금 수집]</b>을 두세 번 누릅니다.</li>
+            <li>아래 기록에서 <b>변화 없음</b>만 늘고 <b>원문 저장</b>이 0건이면 정상입니다. 위의 원문 숫자도 그대로여야 합니다.</li>
+            <li>새 공고나 바뀐 공고가 있을 때만 원문 숫자가 그만큼 늘어납니다.</li>
+        </ol>
+    </section>
+
+    <section>
+        <h2 class="sub">최근 수집 기록 <span class="tsub">(프로그램을 켠 뒤부터, 최근 20회)</span></h2>
+        @if (runs.Count == 0)
+        {
+            <div class="empty">아직 기록이 없습니다.</div>
+        }
+        else
+        {
+            <div class="tbl">
+                <table>
+                    <thead><tr><th>시각</th><th>방식</th><th class="r">새 공고</th><th class="r">변경</th><th class="r">변화 없음</th><th class="r">원문 저장</th><th>오류</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in runs)
+                        {
+                            <tr>
+                                <td class="num nw">@Display.DateTimeText(r.At)</td>
+                                <td>@r.Trigger</td>
+                                <td class="r num">@(r.Result?.Added)</td>
+                                <td class="r num">@(r.Result?.Changed)</td>
+                                <td class="r num">@(r.Result?.Unchanged)</td>
+                                <td class="r num"><b>@(r.Result?.RawSaved)</b></td>
+                                <td class="err">@r.Error</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private CollectStats? stats;
+    private IReadOnlyList<ApiUsageToday> usage = [];
+    private double stopAt;
+    private IReadOnlyList<CollectRun> runs = [];
+    private string? message;
+    private bool failed;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task RunNowAsync()
+    {
+        DateTime now = Clock.GetLocalNow().DateTime;
+        try
+        {
+            var result = await Collector.CollectAsync(now.AddDays(-1), now, CancellationToken.None);
+            State.Record(new CollectRun(now, "수동", result, null));
+            message = $"수집했습니다. 새 공고 {result.Added}건, 변경 {result.Changed}건, 변화 없음 {result.Unchanged}건, 원문 저장 {result.RawSaved}건.";
+            failed = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "수동 수집 실패");
+            State.Record(new CollectRun(now, "수동", null, ex.Message));
+            message = "수집하지 못했습니다: " + ex.Message;
+            failed = true;
+        }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        stats = await StatsQueries.GetStatsAsync(CancellationToken.None);
+        runs = State.Recent();
+        usage = await Usage.GetTodayAsync(CancellationToken.None);
+        stopAt = LimitOptions.Value.StopAtRatio;
+    }
+
+    private static string SizeText(long bytes) =>
+        bytes >= 1024 * 1024 ? $"{bytes / 1024d / 1024d:0.0} MB" : $"{Math.Max(1, bytes / 1024)} KB";
+}

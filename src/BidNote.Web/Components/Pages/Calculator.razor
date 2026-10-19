@@ -1,0 +1,200 @@
+@page "/tools"
+@page "/tools/calc"
+@rendermode InteractiveServer
+@using System.Globalization
+@using BidNote.Application.Notices
+@using BidNote.Domain.Bidding
+@inject INoticeDetailQueries Queries
+
+<PageTitle>투찰금액 계산기 · 입찰노트</PageTitle>
+
+<div class="stack calc">
+    <div class="listhead">
+        <h1>투찰금액 계산기</h1>
+        @if (fromNotice is not null)
+        {
+            <a class="btn line" href="/notices/@fromNotice.Id">← 공고로 돌아가기</a>
+        }
+    </div>
+    @if (fromNotice is not null)
+    {
+        <div class="notice">불러온 공고: <b>@fromNotice.Name</b> <span class="num">(@fromNotice.BidNo-@fromNotice.BidSeq)</span></div>
+    }
+
+    <div class="cgrid">
+        <section class="panel stack">
+            <h2 class="sub">입력</h2>
+            <label class="f">기초금액(원)
+                <input class="in num" type="text" inputmode="numeric" value="@Comma(basePrice)" @oninput="e => basePrice = ParseLong(e.Value)" placeholder="예: 186,400,000" />
+            </label>
+            <div class="two">
+                <label class="f">사정률(%)
+                    <input class="in num" type="number" step="0.0001" @bind="rate" @bind:event="oninput" />
+                </label>
+                <label class="f">낙찰하한율(%)
+                    <input class="in num" type="number" step="0.001" @bind="lowerLimit" @bind:event="oninput" />
+                </label>
+            </div>
+            <div class="two">
+                <label class="f">A값(원)
+                    <input class="in num" type="text" inputmode="numeric" value="@Comma(aValue)" @oninput="e => aValue = ParseLong(e.Value)" placeholder="없으면 비워 두기" />
+                </label>
+                <label class="f">순공사원가(원)
+                    <input class="in num" type="text" inputmode="numeric" value="@Comma(netCost)" @oninput="e => netCost = ParseLong(e.Value)" placeholder="없으면 비워 두기" />
+                </label>
+            </div>
+            <div class="row">
+                <span class="tsub">자주 쓰는 낙찰하한율</span>
+                @foreach (double v in new[] { 87.745, 86.745, 89.745 })
+                {
+                    <button type="button" class="pill @(Math.Abs(lowerLimit - v) < 0.0001 ? "on" : "")" @onclick="() => lowerLimit = v">@v.ToString("0.000", CultureInfo.InvariantCulture)%</button>
+                }
+                <button type="button" class="pill" @onclick="Reset">모두 지우기</button>
+            </div>
+        </section>
+
+        <section class="panel stack result">
+            <h2 class="sub">결과</h2>
+            @if (calc is null)
+            {
+                <div class="empty">@(error ?? "기초금액, 사정률, 낙찰하한율을 넣으면 바로 계산합니다.")</div>
+            }
+            else
+            {
+                <div class="final">
+                    <span class="lbl">써낼 투찰금액 (원 단위 올림)</span>
+                    <span class="v num">@Display.Won(calc.BidAmount)원</span>
+                    <span class="lbl">투찰률 @((calc.BidAmount / calc.PlannedPrice * 100m).ToString("0.000", CultureInfo.InvariantCulture))% · @Used</span>
+                </div>
+                <dl class="lines">
+                    <div><dt>예정가격 <small>기초금액 × 사정률</small></dt><dd class="num">@Money(calc.PlannedPrice)</dd></div>
+                    <div class="@(calc.AValueAmount is null && !calc.UsedNetCostFloor ? "pick" : "")"><dt>기본 산식 <small>예정가격 × 낙찰하한율</small></dt><dd class="num">@Money(calc.BasicAmount)</dd></div>
+                    <div class="@(calc.AValueAmount is not null && !calc.UsedNetCostFloor ? "pick" : "")"><dt>A값 적용 <small>(예정가격 − A값) × 하한율 + A값</small></dt><dd class="num">@(calc.AValueAmount is { } a ? Money(a) : "A값 없음")</dd></div>
+                    <div class="@(calc.UsedNetCostFloor ? "pick" : "")"><dt>순공사원가 하한 <small>순공사원가 × 사정률 × 98%</small></dt><dd class="num">@(calc.NetCostFloor is { } f ? Money(f) : "순공사원가 없음")</dd></div>
+                </dl>
+            }
+
+            <h2 class="sub">투찰금액으로 사정률 거꾸로 계산</h2>
+            <div class="row">
+                <input class="in num grow" type="text" inputmode="numeric" value="@Comma(reverseBid)" @oninput="e => reverseBid = ParseLong(e.Value)" placeholder="써낼 금액 (원)" />
+            </div>
+            <p class="tsub">@ReverseText</p>
+        </section>
+    </div>
+
+    <section class="panel">
+        <div class="listhead">
+            <h2 class="sub">사정률별 투찰금액</h2>
+            <span class="sorts">
+                @foreach (double r in new[] { 2.0, 3.0 })
+                {
+                    <button type="button" class="@(Math.Abs(range - r) < 0.001 ? "on" : "")" @onclick="() => range = r">±@r%</button>
+                }
+            </span>
+        </div>
+        @if (calc is null)
+        {
+            <p class="tsub">계산할 수 있는 값이 들어오면 표가 나옵니다.</p>
+        }
+        else
+        {
+            <div class="tbl">
+                <table>
+                    <thead><tr><th class="r">사정률</th><th class="r">예정가격</th><th class="r">투찰금액</th><th>적용 산식</th></tr></thead>
+                    <tbody>
+                        @foreach (var (r, c) in Rows())
+                        {
+                            <tr class="@(Math.Abs(r - rate) < 0.0001 ? "mid" : "")">
+                                <td class="r num">@r.ToString("0.0", CultureInfo.InvariantCulture)%</td>
+                                <td class="r num">@Display.Won((long)Math.Round(c.PlannedPrice))</td>
+                                <td class="r num"><b>@Display.Won(c.BidAmount)</b></td>
+                                <td>@(c.UsedNetCostFloor ? "순공사원가 하한" : c.AValueAmount is not null ? "A값 적용" : "기본")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        <p class="tsub">참고용 계산입니다. 최종 금액은 공고문과 발주기관 기준을 확인하세요.</p>
+    </section>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "notice")] public int? NoticeId { get; set; }
+
+    private NoticeDetail? fromNotice;
+    private long basePrice, aValue, netCost, reverseBid;
+    private double rate = 100, lowerLimit = 87.745, range = 3;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (NoticeId is not { } id) return;
+        fromNotice = await Queries.GetAsync(id, CancellationToken.None);
+        if (fromNotice is null) return;
+        basePrice = fromNotice.BasePrice ?? 0;
+        aValue = fromNotice.AValue ?? 0;
+        netCost = fromNotice.NetCost ?? 0;
+        if (fromNotice.LowerLimitRate > 0) lowerLimit = fromNotice.LowerLimitRate;
+        if (fromNotice.ReservePriceRange.Contains('2', StringComparison.Ordinal) && !fromNotice.ReservePriceRange.Contains('3', StringComparison.Ordinal)) range = 2;
+    }
+
+    private string? error;
+
+    private BidCalculation? calc
+    {
+        get
+        {
+            error = null;
+            if (basePrice <= 0 || rate <= 0 || lowerLimit <= 0) return null;
+            if (aValue >= basePrice) { error = "A값이 기초금액보다 크거나 같습니다. 값을 확인하세요."; return null; }
+            return BidCalculator.Calculate(new BidInput(basePrice, rate, lowerLimit, aValue, netCost));
+        }
+    }
+
+    private string Used => calc switch
+    {
+        { UsedNetCostFloor: true } => "순공사원가 하한이 더 높아 하한 금액 적용",
+        { AValueAmount: not null } => "A값 적용 산식",
+        _ => "기본 산식",
+    };
+
+    private string ReverseText
+    {
+        get
+        {
+            if (reverseBid <= 0) return "금액을 넣으면 그 금액이 어느 사정률에 해당하는지 보여 줍니다.";
+            if (basePrice <= 0 || lowerLimit <= 0) return "기초금액과 낙찰하한율을 먼저 넣어 주세요.";
+            double r = BidCalculator.AssessmentRateFor(basePrice, lowerLimit, aValue, reverseBid);
+            return $"이 금액은 사정률 {r.ToString("0.0000", CultureInfo.InvariantCulture)}%에 해당합니다 ({(aValue > 0 ? "A값 적용" : "기본")} 산식 기준, 순공사원가 하한은 따지지 않음).";
+        }
+    }
+
+    private IEnumerable<(double Rate, BidCalculation Calc)> Rows()
+    {
+        for (double d = -range; d <= range + 1e-9; d += 0.5)
+        {
+            double r = 100 + d;
+            yield return (r, BidCalculator.Calculate(new BidInput(basePrice, r, lowerLimit, aValue, netCost)));
+        }
+    }
+
+    private void Reset()
+    {
+        basePrice = aValue = netCost = reverseBid = 0;
+        rate = 100;
+        lowerLimit = 87.745;
+        fromNotice = null;
+    }
+
+    private static long ParseLong(object? value)
+    {
+        string digits = new((value?.ToString() ?? "").Where(char.IsAsciiDigit).ToArray());
+        return digits.Length is > 0 and <= 15 ? long.Parse(digits, CultureInfo.InvariantCulture) : 0;
+    }
+
+    private static string Comma(long v) => v > 0 ? Display.Won(v) : "";
+
+    /// <summary>중간 금액은 올림 전 값을 그대로 보여 준다 (최종 투찰금액만 원 단위 올림).</summary>
+    private static string Money(decimal v) =>
+        (v == decimal.Truncate(v) ? v.ToString("N0", CultureInfo.GetCultureInfo("ko-KR")) : v.ToString("N2", CultureInfo.GetCultureInfo("ko-KR"))) + "원";
+}
