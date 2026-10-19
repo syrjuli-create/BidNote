@@ -17,7 +17,10 @@ public static class DependencyInjection
         if (!Path.IsPathRooted(dbPath)) dbPath = Path.Combine(basePath, dbPath);
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 
-        services.AddDbContext<BidNoteDbContext>(o => o.UseSqlite($"Data Source={dbPath}"));
+        // 일반 요청은 요청마다 하나의 DbContext를, 화면 버튼처럼 동시에 여러 번 불릴 수 있는 곳은 팩토리로 매번 새로 만든다.
+        services.AddDbContextFactory<BidNoteDbContext>(o => o.UseSqlite($"Data Source={dbPath}"));
+        services.AddScoped(sp => sp.GetRequiredService<IDbContextFactory<BidNoteDbContext>>().CreateDbContext());
+        services.AddScoped<BidNote.Application.Favorites.IFavoriteStore, FavoriteStore>();
         services.AddSingleton(new StorageLocation(dbPath));
         services.AddScoped<ICollectStatsQueries, CollectStatsQueries>();
         services.AddScoped<BidNote.Application.Notices.INoticeDetailQueries, NoticeDetailQueries>();

@@ -1,0 +1,109 @@
+@page "/mine"
+@page "/mine/favorites"
+@rendermode InteractiveServer
+@using BidNote.Application.Favorites
+@using BidNote.Domain.Favorites
+@inject IFavoriteStore Store
+@inject TimeProvider Clock
+
+<PageTitle>관심 공고 · 입찰노트</PageTitle>
+
+<div class="stack favs">
+    <div class="listhead">
+        <h1>관심 공고 <span class="tsub" style="display:inline">진행 중 @(list?.Open.Count ?? 0)건</span></h1>
+    </div>
+
+    @if (list is null)
+    {
+        <div class="empty">불러오는 중입니다.</div>
+    }
+    else if (list.Open.Count == 0 && list.Closed.Count == 0)
+    {
+        <div class="empty">아직 담은 공고가 없습니다. 공고 목록이나 상세 화면에서 ★를 눌러 담아 보세요. <a href="/">공고 찾기</a></div>
+    }
+    else
+    {
+        @if (list.Open.Count == 0)
+        {
+            <div class="empty">진행 중인 관심 공고가 없습니다.</div>
+        }
+        else
+        {
+            <div class="favlist">
+                @foreach (var f in list.Open) { @Card(f, false) }
+            </div>
+        }
+
+        @if (list.Closed.Count > 0)
+        {
+            <details class="closed">
+                <summary>마감·취소된 관심 공고 @(list.Closed.Count)건</summary>
+                <div class="favlist">
+                    @foreach (var f in list.Closed) { @Card(f, true) }
+                </div>
+            </details>
+        }
+    }
+</div>
+
+@code {
+    private FavoriteList? list;
+    private DateTime now;
+    private int? editing;
+    private string draft = "";
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        now = Clock.GetLocalNow().DateTime;
+        list = await Store.ListAsync(now, CancellationToken.None);
+    }
+
+    private RenderFragment Card(FavoriteItem f, bool closed) => __builder =>
+    {
+        <article class="panel favcard @(closed ? "past" : "")">
+            <div class="favtop">
+                <span class="dday @(closed ? "" : Display.DDayLevel(f.DueAt, now))">@(closed ? (f.IsActive ? "마감" : "취소") : Display.DDay(f.DueAt, now))</span>
+                <div class="grow">
+                    <a class="tname" href="/notices/@f.NoticeId">@f.Name</a>
+                    @if (f.CorrectionCount > 0) { <span class="chip warn">정정 @(f.CorrectionCount)차</span> }
+                    <span class="tsub">@f.Agency · @f.Region @f.License · 마감 @Display.DateTimeText(f.DueAt)</span>
+                </div>
+                <div class="favprice num">@Display.Eok(f.BasePrice)</div>
+            </div>
+
+            @if (editing == f.NoticeId)
+            {
+                <textarea class="in memo" rows="2" maxlength="@FavoriteNotice.MaxMemoLength" @bind="draft" @bind:event="oninput"></textarea>
+                <div class="row">
+                    <button type="button" class="btn" @onclick="() => SaveMemoAsync(f.NoticeId)">메모 저장</button>
+                    <button type="button" class="btn line" @onclick="() => editing = null">취소</button>
+                </div>
+            }
+            else
+            {
+                <p class="memo-view @(f.Memo.Length == 0 ? "none" : "")">@(f.Memo.Length == 0 ? "메모 없음" : f.Memo)</p>
+                <div class="row actions">
+                    <button type="button" class="pill" @onclick="() => { editing = f.NoticeId; draft = f.Memo; }">메모</button>
+                    @if (!closed) { <a class="pill" href="/tools/calc?notice=@f.NoticeId">투찰금액 계산</a> }
+                    <a class="pill" href="/notices/@f.NoticeId">상세</a>
+                    <button type="button" class="pill danger" @onclick="() => RemoveAsync(f.NoticeId)">빼기</button>
+                </div>
+            }
+        </article>
+    };
+
+    private async Task SaveMemoAsync(int noticeId)
+    {
+        await Store.SaveMemoAsync(noticeId, draft, CancellationToken.None);
+        editing = null;
+        await LoadAsync();
+    }
+
+    private async Task RemoveAsync(int noticeId)
+    {
+        await Store.RemoveAsync(noticeId, CancellationToken.None);
+        await LoadAsync();
+    }
+}

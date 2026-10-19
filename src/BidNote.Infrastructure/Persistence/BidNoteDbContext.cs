@@ -1,3 +1,4 @@
+using BidNote.Domain.Favorites;
 using BidNote.Domain.Collecting;
 using BidNote.Domain.Notices;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +13,7 @@ public sealed class BidNoteDbContext(DbContextOptions<BidNoteDbContext> options)
     public DbSet<ApiUsage> ApiUsages => Set<ApiUsage>();
     public DbSet<NoticeLicense> NoticeLicenses => Set<NoticeLicense>();
     public DbSet<CollectorSetting> CollectorSettings => Set<CollectorSetting>();
+    public DbSet<FavoriteNotice> FavoriteNotices => Set<FavoriteNotice>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -39,6 +41,12 @@ public sealed class BidNoteDbContext(DbContextOptions<BidNoteDbContext> options)
             e.HasIndex(x => x.CollectedAt);
         });
         modelBuilder.Entity<CollectorSetting>(e => e.Property(x => x.Id).ValueGeneratedNever());
+        modelBuilder.Entity<FavoriteNotice>(e =>
+        {
+            e.HasIndex(x => x.NoticeId).IsUnique();
+            e.Property(x => x.Memo).HasMaxLength(FavoriteNotice.MaxMemoLength);
+            e.HasOne(x => x.Notice).WithMany().HasForeignKey(x => x.NoticeId).OnDelete(DeleteBehavior.Cascade);
+        });
         modelBuilder.Entity<ApiUsage>(e =>
         {
             e.HasIndex(x => new { x.Date, x.ApiName }).IsUnique();

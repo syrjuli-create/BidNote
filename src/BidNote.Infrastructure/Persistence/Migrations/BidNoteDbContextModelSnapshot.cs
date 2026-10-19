@@ -117,6 +117,34 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                     b.ToTable("CollectorSettings");
                 });
 
+            modelBuilder.Entity("BidNote.Domain.Favorites.FavoriteNotice", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("AddedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Memo")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("NoticeId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NoticeId")
+                        .IsUnique();
+
+                    b.ToTable("FavoriteNotices");
+                });
+
             modelBuilder.Entity("BidNote.Domain.Notices.Notice", b =>
                 {
                     b.Property<int>("Id")
@@ -294,6 +322,17 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                     b.HasIndex("NoticeId");
 
                     b.ToTable("NoticeLicenses");
+                });
+
+            modelBuilder.Entity("BidNote.Domain.Favorites.FavoriteNotice", b =>
+                {
+                    b.HasOne("BidNote.Domain.Notices.Notice", "Notice")
+                        .WithMany()
+                        .HasForeignKey("NoticeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Notice");
                 });
 
             modelBuilder.Entity("BidNote.Domain.Notices.NoticeHistory", b =>

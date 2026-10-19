@@ -12,7 +12,9 @@ builder.Configuration.AddEnvironmentVariables();
 builder.Configuration.AddCommandLine(args);
 
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents(o => o.DetailedErrors = builder.Environment.IsDevelopment())
+    // 공고 목록의 별 버튼(최대 200개)이 한꺼번에 연결을 요청하므로 기본 32KB로는 연결이 끊긴다.
+    .AddHubOptions(o => o.MaximumReceiveMessageSize = 1024 * 1024);
 builder.Services.AddBidNoteInfrastructure(builder.Configuration, builder.Environment.ContentRootPath);
 builder.Services.AddSingleton<CollectorState>();
 builder.Services.AddSingleton<CollectorSignal>();

@@ -4,6 +4,7 @@
 @inject TimeProvider Clock
 @inject NavigationManager Nav
 @inject IConfiguration Config
+@inject BidNote.Application.Favorites.IFavoriteStore Favorites
 
 <PageTitle>입찰노트</PageTitle>
 
@@ -84,6 +85,7 @@
                     <a href="/?due=1" class="hot @(Due == 1 && OnlyOne ? "on" : "")"><b>@summary.ClosingSoonCount</b> 내일까지 마감</a>
                     <a href="/?new=true" class="@(IsNew == true && OnlyOne ? "on" : "")"><b>@summary.NewCount</b> 새 공고</a>
                     <a href="/?corrected=true" class="@(Corrected == true && OnlyOne ? "on" : "")"><b>@summary.CorrectedCount</b> 정정</a>
+                    <a href="/mine" class="fav"><b>@favCount</b> ★ 관심 공고</a>
                 </nav>
             }
 
@@ -111,30 +113,7 @@
             }
             else
             {
-                <div class="tbl">
-                    <table>
-                        <thead>
-                            <tr><th>마감</th><th>공고명 · 발주기관</th><th>지역·업종</th><th class="r">기초금액</th><th>마감 일시</th></tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var n in result.Items)
-                            {
-                                <tr>
-                                    <td><span class="dday @Display.DDayLevel(n.DueAt, now)">@Display.DDay(n.DueAt, now)</span></td>
-                                    <td>
-                                        <a class="tname" href="/notices/@n.Id">@n.Name</a>
-                                        @if (n.CorrectionCount > 0) { <span class="chip warn">정정 @(n.CorrectionCount)차</span> }
-                                        @if (n.PostedAt >= now - HomeRules.NewWindow) { <span class="chip new">새 공고</span> }
-                                        <span class="tsub">@n.Agency · <span class="num">@n.BidNo</span></span>
-                                    </td>
-                                    <td class="nw">@n.Region<span class="tsub">@n.License</span></td>
-                                    <td class="r num">@Display.Eok(n.BasePrice)</td>
-                                    <td class="num nw">@Display.ShortDateTime(n.DueAt)</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
+                <NoticeTable Items="result.Items" FavoriteIds="favIds.ToArray()" Now="now" @rendermode="InteractiveServer" />
             }
 
             @if (summary?.LastCollectedAt is { } last)
@@ -158,6 +137,8 @@
     private HomeSummary? summary;
     private NoticeSearchResult? result;
     private DateTime now;
+    private IReadOnlySet<int> favIds = new HashSet<int>();
+    private int favCount;
     private string? heroVideo;
     private string? heroPoster;
 
@@ -192,5 +173,7 @@
         };
         summary = await HomeQueries.GetSummaryAsync(now, CancellationToken.None);
         result = await HomeQueries.SearchAsync(filter, now, CancellationToken.None);
+        favIds = await Favorites.FavoriteIdsAsync([.. result.Items.Select(x => x.Id)], CancellationToken.None);
+        favCount = await Favorites.CountOpenAsync(now, CancellationToken.None);
     }
 }

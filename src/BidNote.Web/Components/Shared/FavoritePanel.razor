@@ -1,0 +1,51 @@
+@using BidNote.Application.Favorites
+@using BidNote.Domain.Favorites
+@inject IFavoriteStore Store
+
+<section class="panel favpanel">
+    <div class="row">
+        <button type="button" class="btn @(on ? "line" : "")" disabled="@busy" @onclick="ToggleAsync">
+            @(on ? "★ 관심 공고에서 빼기" : "☆ 관심 공고에 담기")
+        </button>
+        @if (on) { <a class="tsub" href="/mine">관심 공고 모아 보기 →</a> }
+    </div>
+    <label class="f">메모 <span class="tsub" style="display:inline">(@(memo.Length)/@(FavoriteNotice.MaxMemoLength)자, 저장하면 관심 공고에도 담깁니다)</span>
+        <textarea class="in memo" rows="3" maxlength="@FavoriteNotice.MaxMemoLength" placeholder="예: 현장 설명 없음, 99.8 근처 검토" @bind="memo" @bind:event="oninput"></textarea>
+    </label>
+    <div class="row">
+        <button type="button" class="btn line" disabled="@(busy || memo == savedMemo)" @onclick="SaveMemoAsync">메모 저장</button>
+        <span class="tsub" style="display:inline">@status</span>
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public int NoticeId { get; set; }
+
+    private bool on, busy;
+    private string memo = "", savedMemo = "", status = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        on = (await Store.FavoriteIdsAsync([NoticeId], CancellationToken.None)).Contains(NoticeId);
+        savedMemo = memo = await Store.MemoAsync(NoticeId, CancellationToken.None) ?? "";
+    }
+
+    private async Task ToggleAsync()
+    {
+        busy = true;
+        on = await Store.ToggleAsync(NoticeId, CancellationToken.None);
+        if (!on) { memo = savedMemo = ""; }
+        status = on ? "관심 공고에 담았습니다." : "관심 공고에서 뺐습니다. 메모도 함께 지웠습니다.";
+        busy = false;
+    }
+
+    private async Task SaveMemoAsync()
+    {
+        busy = true;
+        await Store.SaveMemoAsync(NoticeId, memo, CancellationToken.None);
+        savedMemo = memo = memo.Trim();
+        on = true;
+        status = "메모를 저장했습니다.";
+        busy = false;
+    }
+}

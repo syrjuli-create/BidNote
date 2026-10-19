@@ -1,5 +1,4 @@
 @page "/notices"
-@page "/mine"
 @page "/alerts"
 @page "/library"
 @page "/help"
@@ -18,7 +17,6 @@
     private string Title => new Uri(Nav.Uri).AbsolutePath.TrimEnd('/') switch
     {
         "/notices" => "공고 찾기",
-        "/mine" => "내 입찰",
         "/alerts" => "알림",
         "/library" => "자료실",
         "/help" => "고객센터",
