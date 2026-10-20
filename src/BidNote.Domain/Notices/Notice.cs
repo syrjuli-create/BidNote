@@ -24,6 +24,9 @@ public class Notice
     /// <summary>원문의 현장 지역 전체 이름. 예: 대전광역시 서구</summary>
     public string SiteRegionName { get; set; } = "";
 
+    /// <summary>계약방법 묶음 (일반경쟁·제한경쟁·지명경쟁·수의계약). "제한경쟁(1등급)"의 등급은 떼고 저장한다.</summary>
+    public string ContractMethod { get; set; } = "";
+
     /// <summary>대표 업종 (목록 표시용). 면허 제한 첫 줄이나 주공종.</summary>
     public string License { get; set; } = "";
 

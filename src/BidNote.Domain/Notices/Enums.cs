@@ -22,6 +22,19 @@ public enum NoticeChangeType
     Updated = 4,
 }
 
+public static class ContractMethods
+{
+    public const string Negotiated = "수의계약";
+
+    /// <summary>"제한경쟁(1등급)"처럼 붙은 괄호 설명을 떼어 필터용 묶음으로 만든다.</summary>
+    public static string Group(string raw)
+    {
+        string s = (raw ?? "").Trim();
+        int paren = s.IndexOf('(', StringComparison.Ordinal);
+        return paren > 0 ? s[..paren].Trim() : s;
+    }
+}
+
 public static class SourceSystems
 {
     public const string G2B = "G2B";

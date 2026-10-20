@@ -102,6 +102,7 @@ public sealed class FakeG2BCollector : IBidCollector
             DemandAgency = s.Demand,
             Region = s.Region,
             SiteRegionName = s.Region,
+            ContractMethod = s.Base < 100_000_000 ? ContractMethods.Negotiated : "제한경쟁",
             License = s.License,
             Licenses = [new CollectedLicense(1, s.License)],
             BasePrice = s.Base,

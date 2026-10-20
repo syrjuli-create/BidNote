@@ -193,6 +193,7 @@ public sealed class CollectService(
         n.DemandAgency = i.DemandAgency;
         n.Region = i.Region;
         n.SiteRegionName = i.SiteRegionName;
+        n.ContractMethod = i.ContractMethod;
         n.License = i.License.Length > 0 ? i.License : i.Licenses.FirstOrDefault()?.Name ?? "";
         n.DetailUrl = i.DetailUrl;
         // 면허 제한은 통째로 바꾼다 (원문이 바뀐 경우에만 여기까지 온다).

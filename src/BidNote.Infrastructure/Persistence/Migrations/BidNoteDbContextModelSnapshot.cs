@@ -181,6 +181,10 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                     b.Property<int>("BusinessType")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ContractMethod")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("CorrectionCount")
                         .HasColumnType("INTEGER");
 

@@ -16,6 +16,7 @@ public sealed record CollectedNotice
     public string DemandAgency { get; init; } = "";
     public string Region { get; init; } = "";
     public string SiteRegionName { get; init; } = "";
+    public string ContractMethod { get; init; } = "";
     public string License { get; init; } = "";
     public IReadOnlyList<CollectedLicense> Licenses { get; init; } = [];
     public string DetailUrl { get; init; } = "";

@@ -19,6 +19,22 @@ public static class DatabaseInitializer
         await db.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
         if (purgeFakeData) await PurgeFakeDataAsync(db, logger, cancellationToken).ConfigureAwait(false);
         await RestoreWipedBasePricesAsync(db, logger, cancellationToken).ConfigureAwait(false);
+        await ShortenRegionNamesAsync(db, logger, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>예전에 "대전광역시"처럼 긴 이름으로 저장한 지역을 짧은 이름("대전")으로 고친다.</summary>
+    public static async Task<int> ShortenRegionNamesAsync(BidNoteDbContext db, ILogger logger, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        int changed = 0;
+        foreach (string name in RegionNames.LongNames)
+        {
+            string shortName = RegionNames.ToShort(name);
+            changed += await db.Notices.Where(x => x.Region == name)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.Region, shortName), cancellationToken).ConfigureAwait(false);
+        }
+        if (changed > 0) logger.LogInformation("지역 이름 {Count}건을 짧은 이름으로 고쳤습니다.", changed);
+        return changed;
     }
 
     /// <summary>

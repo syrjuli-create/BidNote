@@ -28,6 +28,7 @@ public class G2BCollectorTests
         ["sucsfbidLwltRate"] = "87.745",
         ["mainCnsttyNm"] = "",
         ["cnstrtsiteRgnNm"] = "대전광역시 서구",
+        ["cntrctCnclsMthdNm"] = "제한경쟁(3등급)",
         ["chgDt"] = "",
         ["bidNtceDtlUrl"] = "https://www.g2b.go.kr/x",
     });
@@ -84,7 +85,8 @@ public class G2BCollectorTests
         Assert.Equal(3, handler.Requests.Count);
         var r2 = items.Single(x => x.BidNo == "R2");
         Assert.Equal(["실내건축공사업", "전기공사업"], r2.Licenses.Select(l => l.Name));
-        Assert.Equal("대전광역시", r2.Region);
+        Assert.Equal("대전", r2.Region);
+        Assert.Equal("제한경쟁", r2.ContractMethod);
         Assert.Equal("대전광역시 서구", r2.SiteRegionName);
         Assert.Equal(new DateTime(2026, 10, 22, 14, 0, 0), r2.DueAt);
         Assert.Equal(87.745, r2.LowerLimitRate);

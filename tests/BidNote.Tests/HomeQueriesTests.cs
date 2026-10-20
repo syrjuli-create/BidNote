@@ -85,6 +85,95 @@ public sealed class HomeQueriesTests : IDisposable
     }
 
     [Fact]
+    public async Task 계약방법으로_거르고_수의계약은_뺄_수_있다()
+    {
+        using (var db = testDb.NewContext())
+        {
+            db.Notices.AddRange(
+                Notice("A", due: Now.AddDays(3), posted: Now.AddDays(-1), contract: "제한경쟁"),
+                Notice("B", due: Now.AddDays(3), posted: Now.AddDays(-1), contract: "수의계약"),
+                Notice("C", due: Now.AddDays(3), posted: Now.AddDays(-1), contract: "수의계약"),
+                Notice("D", due: Now.AddDays(3), posted: Now.AddDays(-1), contract: "일반경쟁"));
+            await db.SaveChangesAsync();
+        }
+        using var ctx = testDb.NewContext();
+        var repo = new NoticeRepository(ctx);
+
+        var limited = await repo.SearchAsync(new NoticeFilter { ContractMethod = "제한경쟁" }, Now, CancellationToken.None);
+        var noNegotiated = await repo.SearchAsync(new NoticeFilter { ExcludeNegotiated = true }, Now, CancellationToken.None);
+
+        Assert.Equal(["A"], limited.Items.Select(x => x.Name));
+        Assert.Equal(["A", "D"], noNegotiated.Items.Select(x => x.Name).Order());
+        Assert.Equal([new FacetCount("수의계약", 2), new FacetCount("일반경쟁", 1), new FacetCount("제한경쟁", 1)], limited.ContractMethods);
+    }
+
+    [Theory]
+    [InlineData("제한경쟁(1등급)", "제한경쟁")]
+    [InlineData(" 수의계약 ", "수의계약")]
+    [InlineData("일반경쟁", "일반경쟁")]
+    [InlineData("", "")]
+    public void 계약방법은_괄호_설명을_떼고_묶는다(string raw, string expected) =>
+        Assert.Equal(expected, ContractMethods.Group(raw));
+
+    [Theory]
+    [InlineData("서울특별시", "서울")]
+    [InlineData("경상남도", "경남")]
+    [InlineData("전북특별자치도", "전북")]
+    [InlineData("전남광주통합특별시", "전남·광주")]
+    [InlineData("전국", "전국")]
+    public void 시도_이름은_짧게_바꾸고_모르는_이름은_그대로_둔다(string name, string expected) =>
+        Assert.Equal(expected, RegionNames.ToShort(name));
+
+    [Fact]
+    public async Task 예전에_긴_이름으로_저장한_지역을_시작할_때_짧게_고친다()
+    {
+        using (var db = testDb.NewContext())
+        {
+            db.Notices.AddRange(
+                Notice("A", due: Now.AddDays(3), posted: Now.AddDays(-1), region: "충청남도"),
+                Notice("B", due: Now.AddDays(3), posted: Now.AddDays(-1), region: "충남"),
+                Notice("C", due: Now.AddDays(3), posted: Now.AddDays(-1), region: "전국"));
+            await db.SaveChangesAsync();
+        }
+        using (var db = testDb.NewContext())
+            Assert.Equal(1, await DatabaseInitializer.ShortenRegionNamesAsync(db, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, CancellationToken.None));
+
+        using var ctx = testDb.NewContext();
+        Assert.Equal(["충남", "충남", "전국"], ctx.Notices.OrderBy(x => x.BidNo).Select(x => x.Region).ToList());
+    }
+
+    [Fact]
+    public async Task 페이지를_나눠_주고_전체_건수를_알려준다_넘치는_페이지는_마지막_페이지로()
+    {
+        using (var db = testDb.NewContext())
+        {
+            for (int i = 1; i <= 7; i++)
+                db.Notices.Add(Notice("N" + i, due: Now.AddDays(i), posted: Now.AddDays(-1)));
+            await db.SaveChangesAsync();
+        }
+        using var ctx = testDb.NewContext();
+        var repo = new NoticeRepository(ctx);
+
+        var p2 = await repo.SearchAsync(new NoticeFilter { Page = 2, PageSize = 3 }, Now, CancellationToken.None);
+        var tooFar = await repo.SearchAsync(new NoticeFilter { Page = 99, PageSize = 3 }, Now, CancellationToken.None);
+
+        Assert.Equal((7, 2, 3), (p2.TotalCount, p2.Page, p2.PageCount));
+        Assert.Equal(["N4", "N5", "N6"], p2.Items.Select(x => x.Name));
+        Assert.Equal(3, tooFar.Page);
+        Assert.Equal(["N7"], tooFar.Items.Select(x => x.Name));
+    }
+
+    [Theory]
+    [InlineData(1, 1, new[] { 1 })]
+    [InlineData(1, 5, new[] { 1, 2, 3, 4, 5 })]
+    [InlineData(6, 40, new[] { 1, 0, 4, 5, 6, 7, 8, 0, 40 })]
+    [InlineData(40, 40, new[] { 1, 0, 38, 39, 40 })]
+    public void 페이지_번호는_앞뒤_2개와_처음_끝만_보여준다(int current, int count, int[] expected)
+    {
+        Assert.Equal(expected, BidNote.Web.Components.Pages.Home.PageNumbers(current, count));
+    }
+
+    [Fact]
     public async Task 공고가_없으면_0건과_빈_목록을_준다()
     {
         using var ctx = testDb.NewContext();
@@ -96,7 +185,7 @@ public sealed class HomeQueriesTests : IDisposable
     }
 
     private static Notice Notice(string name, DateTime due, DateTime posted, int seq = 0, bool active = true,
-        string region = "", string license = "", long? price = null) => new()
+        string region = "", string license = "", long? price = null, string contract = "") => new()
         {
             BidNo = name,
             BidSeq = seq.ToString("00", System.Globalization.CultureInfo.InvariantCulture),
@@ -104,6 +193,7 @@ public sealed class HomeQueriesTests : IDisposable
             Agency = "○○시",
             Region = region,
             License = license,
+            ContractMethod = contract,
             BasePrice = price,
             DueAt = due,
             OpenAt = due.AddHours(1),

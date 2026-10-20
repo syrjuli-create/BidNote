@@ -68,6 +68,8 @@ public sealed class NoticeRepository(BidNoteDbContext db) : INoticeRepository, I
             q = q.Where(x => x.DueAt < limit);
         }
         if (filter.CorrectedOnly) q = q.Where(x => x.CorrectionCount > 0);
+        if (!string.IsNullOrWhiteSpace(filter.ContractMethod)) q = q.Where(x => x.ContractMethod == filter.ContractMethod);
+        if (filter.ExcludeNegotiated) q = q.Where(x => x.ContractMethod != ContractMethods.Negotiated);
         if (filter.NewOnly)
         {
             DateTime since = now - HomeRules.NewWindow;
@@ -80,10 +82,15 @@ public sealed class NoticeRepository(BidNoteDbContext db) : INoticeRepository, I
             _ => q.OrderBy(x => x.DueAt).ThenBy(x => x.Id),
         };
 
-        var items = await Project(q.Take(HomeRules.SearchLimit)).ToListAsync(cancellationToken).ConfigureAwait(false);
+        int size = Math.Clamp(filter.PageSize, 1, HomeRules.MaxPageSize);
+        int total = await q.CountAsync(cancellationToken).ConfigureAwait(false);
+        int pageCount = Math.Max(1, (total + size - 1) / size);
+        int page = Math.Clamp(filter.Page, 1, pageCount); // 범위를 넘는 페이지는 마지막 페이지로
+        var items = await Project(q.Skip((page - 1) * size).Take(size)).ToListAsync(cancellationToken).ConfigureAwait(false);
         var regions = await Facet(open.GroupBy(x => x.Region), cancellationToken).ConfigureAwait(false);
         var licenses = await LicenseFacet(open, cancellationToken).ConfigureAwait(false);
-        return new NoticeSearchResult(items, regions, licenses);
+        var contracts = await Facet(open.GroupBy(x => x.ContractMethod), cancellationToken).ConfigureAwait(false);
+        return new NoticeSearchResult(items, regions, licenses) { TotalCount = total, Page = page, PageSize = size, ContractMethods = contracts };
     }
 
     private static async Task<List<FacetCount>> Facet(IQueryable<IGrouping<string, Notice>> groups, CancellationToken cancellationToken)

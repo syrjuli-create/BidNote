@@ -53,6 +53,16 @@
                     }
                 </select>
             </label>
+            <label class="f">계약방법
+                <select name="contract">
+                    <option value="">전체 계약방법</option>
+                    @foreach (var c in result?.ContractMethods ?? [])
+                    {
+                        <option value="@c.Value" selected="@(Contract == c.Value)">@c.Value (@c.Count)</option>
+                    }
+                </select>
+            </label>
+            <label class="check"><input type="checkbox" name="nosu" value="true" checked="@(NoNegotiated == true)" /> 수의계약 빼고 보기</label>
             <label class="f">기초금액
                 <select name="amount">
                     @foreach (var (v, t) in AmountOptions)
@@ -90,11 +100,16 @@
             }
 
             <div class="listhead">
-                <h2>공고 @(result?.Items.Count ?? 0)건</h2>
+                <h2>공고 @(result?.TotalCount.ToString("N0") ?? "0")건
+                    @if (result is { TotalCount: > 0 } shown)
+                    {
+                        <span class="tsub" style="display:inline">@((shown.Page - 1) * shown.PageSize + 1)–@Math.Min(shown.Page * shown.PageSize, shown.TotalCount)번째</span>
+                    }
+                </h2>
                 <span class="sorts">
                     @foreach (var (v, t) in SortOptions)
                     {
-                        <a href="@Nav.GetUriWithQueryParameter("sort", v)" class="@(CurrentSort == v ? "on" : "")">@t</a>
+                        <a href="@SortUrl(v)" class="@(CurrentSort == v ? "on" : "")">@t</a>
                     }
                 </span>
             </div>
@@ -114,6 +129,19 @@
             else
             {
                 <NoticeTable Items="result.Items" FavoriteIds="favIds.ToArray()" Now="now" @rendermode="InteractiveServer" />
+                @if (result.PageCount > 1)
+                {
+                    <nav class="pager" aria-label="페이지">
+                        @if (result.Page > 1) { <a href="@PageUrl(result.Page - 1)" aria-label="이전 페이지">‹ 이전</a> }
+                        @foreach (int p in PageNumbers(result.Page, result.PageCount))
+                        {
+                            if (p == 0) { <span class="gap">…</span> }
+                            else if (p == result.Page) { <span class="cur" aria-current="page">@p</span> }
+                            else { <a href="@PageUrl(p)">@p</a> }
+                        }
+                        @if (result.Page < result.PageCount) { <a href="@PageUrl(result.Page + 1)" aria-label="다음 페이지">다음 ›</a> }
+                    </nav>
+                }
             }
 
             @if (summary?.LastCollectedAt is { } last)
@@ -132,7 +160,10 @@
     [SupplyParameterFromQuery(Name = "due")] public int? Due { get; set; }
     [SupplyParameterFromQuery(Name = "corrected")] public bool? Corrected { get; set; }
     [SupplyParameterFromQuery(Name = "new")] public bool? IsNew { get; set; }
+    [SupplyParameterFromQuery(Name = "contract")] public string? Contract { get; set; }
+    [SupplyParameterFromQuery(Name = "nosu")] public bool? NoNegotiated { get; set; }
     [SupplyParameterFromQuery(Name = "sort")] public string? Sort { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] public int? PageNo { get; set; }
 
     private HomeSummary? summary;
     private NoticeSearchResult? result;
@@ -146,13 +177,33 @@
     private static readonly (string Value, string Text)[] DueOptions = [("", "전체 기간"), ("0", "오늘 마감"), ("1", "내일까지"), ("3", "3일 이내"), ("7", "7일 이내")];
     private static readonly (string Value, string Text)[] SortOptions = [("due", "마감 임박순"), ("amount", "금액 높은순"), ("new", "최신 공고순")];
 
+    private string PageUrl(int page) => Nav.GetUriWithQueryParameter("page", page == 1 ? null : page);
+
+    /// <summary>정렬을 바꾸면 첫 페이지부터 본다.</summary>
+    private string SortUrl(string sort) => Nav.GetUriWithQueryParameters(new Dictionary<string, object?> { ["sort"] = sort, ["page"] = null });
+
+    /// <summary>1 … 4 5 [6] 7 8 … 40 처럼 앞뒤 2개와 처음·끝만 보여 준다. 0은 생략 표시.</summary>
+    public static IEnumerable<int> PageNumbers(int current, int count)
+    {
+        int last = 0;
+        foreach (int p in Enumerable.Range(1, count).Where(p => p == 1 || p == count || Math.Abs(p - current) <= 2))
+        {
+            if (last != 0 && p - last == 2) yield return last + 1; // 한 쪽만 빠지면 "…" 대신 번호를 보여 준다
+            else if (last != 0 && p - last > 2) yield return 0;
+            yield return p;
+            last = p;
+        }
+    }
+
     private string CurrentSort => Sort is "amount" or "new" ? Sort : "due";
 
     private bool IsPlain => string.IsNullOrEmpty(Q) && (Region?.Length ?? 0) == 0 && string.IsNullOrEmpty(License)
+        && string.IsNullOrEmpty(Contract) && NoNegotiated != true
         && string.IsNullOrEmpty(Amount) && Due is null && Corrected != true && IsNew != true;
 
     /// <summary>빠른 보기 하나만 걸린 상태인지 (다른 필터가 같이 걸렸으면 강조하지 않는다).</summary>
     private bool OnlyOne => string.IsNullOrEmpty(Q) && (Region?.Length ?? 0) == 0 && string.IsNullOrEmpty(License) && string.IsNullOrEmpty(Amount)
+        && string.IsNullOrEmpty(Contract) && NoNegotiated != true
         && (Due is null ? 0 : 1) + (Corrected == true ? 1 : 0) + (IsNew == true ? 1 : 0) == 1;
 
     protected override async Task OnParametersSetAsync()
@@ -165,10 +216,13 @@
             Keyword = Q,
             Regions = Region ?? [],
             License = License,
+            ContractMethod = Contract,
+            ExcludeNegotiated = NoNegotiated == true,
             Amount = Amount switch { "s" => AmountRange.Under100M, "m" => AmountRange.From100MTo500M, "l" => AmountRange.Over500M, _ => AmountRange.Any },
             DueWithinDays = Due is >= 0 ? Due : null,
             CorrectedOnly = Corrected == true,
             NewOnly = IsNew == true,
+            Page = PageNo ?? 1,
             Sort = CurrentSort switch { "amount" => NoticeSort.AmountHigh, "new" => NoticeSort.Newest, _ => NoticeSort.DueSoon },
         };
         summary = await HomeQueries.GetSummaryAsync(now, CancellationToken.None);

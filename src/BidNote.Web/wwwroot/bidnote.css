@@ -253,3 +253,11 @@ main { max-width: 1240px; margin: 0 auto; padding: 28px 24px 72px; }
 .pill.danger:hover { border-color: var(--hot); color: var(--hot); }
 .closed summary { cursor: pointer; font-weight: 700; color: var(--ink-2); padding: 8px 0; }
 .closed .favlist { margin-top: 8px; }
+
+/* 페이지 나누기 */
+.pager { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin-top: 4px; }
+.pager a, .pager span { min-width: 36px; padding: 7px 10px; border-radius: 8px; text-align: center; font-size: 14px; font-variant-numeric: tabular-nums; }
+.pager a { color: var(--ink-2); text-decoration: none; border: 1px solid var(--line); background: var(--surface); }
+.pager a:hover { border-color: var(--brand); color: var(--brand); }
+.pager .cur { background: var(--brand); color: #fff; font-weight: 700; }
+.pager .gap { color: var(--muted); }

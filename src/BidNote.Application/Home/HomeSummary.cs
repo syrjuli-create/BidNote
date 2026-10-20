@@ -40,8 +40,19 @@ public sealed record NoticeFilter
     public int? DueWithinDays { get; init; }
 
     public bool CorrectedOnly { get; init; }
+
+    /// <summary>계약방법 묶음 하나만 (예: 제한경쟁). 비우면 전체.</summary>
+    public string? ContractMethod { get; init; }
+
+    /// <summary>수의계약(소액 견적 등)을 뺀다.</summary>
+    public bool ExcludeNegotiated { get; init; }
     public bool NewOnly { get; init; }
     public NoticeSort Sort { get; init; }
+
+    /// <summary>1부터 시작하는 페이지 번호.</summary>
+    public int Page { get; init; } = 1;
+
+    public int PageSize { get; init; } = HomeRules.PageSize;
 }
 
 public sealed record FacetCount(string Value, int Count);
@@ -49,7 +60,15 @@ public sealed record FacetCount(string Value, int Count);
 public sealed record NoticeSearchResult(
     IReadOnlyList<NoticeListItem> Items,
     IReadOnlyList<FacetCount> Regions,
-    IReadOnlyList<FacetCount> Licenses);
+    IReadOnlyList<FacetCount> Licenses)
+{
+    public IReadOnlyList<FacetCount> ContractMethods { get; init; } = [];
+    /// <summary>조건에 맞는 전체 건수 (이 페이지만이 아니라).</summary>
+    public int TotalCount { get; init; }
+    public int Page { get; init; } = 1;
+    public int PageSize { get; init; } = HomeRules.PageSize;
+    public int PageCount => Math.Max(1, (TotalCount + PageSize - 1) / PageSize);
+}
 
 public interface IHomeQueries
 {
@@ -70,6 +89,9 @@ public static class HomeRules
 
     public const int ListSize = 5;
 
-    /// <summary>목록 한 번에 보여 줄 최대 건수.</summary>
-    public const int SearchLimit = 200;
+    /// <summary>목록 한 페이지 건수.</summary>
+    public const int PageSize = 50;
+
+    /// <summary>한 페이지에 보여 줄 수 있는 최대 건수.</summary>
+    public const int MaxPageSize = 200;
 }
