@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.AddDbContextFactory<BidNoteDbContext>(o => o.UseSqlite($"Data Source={dbPath}"));
         services.AddScoped(sp => sp.GetRequiredService<IDbContextFactory<BidNoteDbContext>>().CreateDbContext());
         services.AddScoped<BidNote.Application.Favorites.IFavoriteStore, FavoriteStore>();
+        services.AddScoped<BidNote.Application.Bidding.IMyBidStore, MyBidStore>();
         services.AddSingleton(new StorageLocation(dbPath));
         services.AddScoped<ICollectStatsQueries, CollectStatsQueries>();
         services.AddScoped<BidNote.Application.Notices.INoticeDetailQueries, NoticeDetailQueries>();

@@ -271,3 +271,17 @@ main { max-width: 1240px; margin: 0 auto; padding: 28px 24px 72px; }
 .aitems table.mini tfoot th, .aitems table.mini tfoot td { font-weight: 700; border-bottom: 0; }
 .aitems tr.muted td { color: #8a8f98; }
 .aitems .warn-text { color: #b45309; margin-top: 6px; }
+
+/* 내 입찰: 화면 바꾸기 탭 */
+.minetabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line, #e5e7eb); }
+.minetabs a { padding: 8px 14px; text-decoration: none; color: inherit; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.minetabs a.on { font-weight: 700; border-bottom-color: currentColor; }
+
+/* 공고 상세: 내 투찰 기록 */
+.mybid .bidform { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
+.mybid .bidform .f { flex: 0 1 180px; min-width: 0; }
+.mybid .bidform .f.grow { flex: 1 1 240px; }
+.mybid .bidform input { width: 100%; }
+.mybid .savedline { margin: 4px 0 8px; }
+.btn.danger { color: #b91c1c; border-color: #f3c4c4; }
+tr.past td { color: #6b7280; }

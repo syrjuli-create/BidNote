@@ -17,6 +17,46 @@ namespace BidNote.Infrastructure.Persistence.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.13");
 
+            modelBuilder.Entity("BidNote.Domain.Bidding.MyBid", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("AValueAtBid")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("AssessmentRate")
+                        .HasColumnType("REAL");
+
+                    b.Property<long?>("BasePriceAtBid")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("BidAmount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Memo")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("NoticeId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NoticeId")
+                        .IsUnique();
+
+                    b.ToTable("MyBids");
+                });
+
             modelBuilder.Entity("BidNote.Domain.Collecting.ApiRawResponse", b =>
                 {
                     b.Property<long>("Id")
@@ -326,6 +366,17 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                     b.HasIndex("NoticeId");
 
                     b.ToTable("NoticeLicenses");
+                });
+
+            modelBuilder.Entity("BidNote.Domain.Bidding.MyBid", b =>
+                {
+                    b.HasOne("BidNote.Domain.Notices.Notice", "Notice")
+                        .WithMany()
+                        .HasForeignKey("NoticeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Notice");
                 });
 
             modelBuilder.Entity("BidNote.Domain.Favorites.FavoriteNotice", b =>

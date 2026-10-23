@@ -1,0 +1,69 @@
+@page "/mine/bids"
+@using System.Globalization
+@using BidNote.Application.Bidding
+@inject IMyBidStore Store
+@inject TimeProvider Clock
+
+<PageTitle>내 투찰 기록 · 입찰노트</PageTitle>
+
+<div class="stack favs">
+    <MineTabs Current="bids" />
+    <div class="listhead">
+        <h1>내 투찰 기록 <span class="tsub" style="display:inline">@(items.Count)건 · 마감 전 @(Count(MyBidStage.BeforeDue))건 · 개찰 대기 @(Count(MyBidStage.WaitingOpen))건</span></h1>
+    </div>
+
+    @if (items.Count == 0)
+    {
+        <div class="empty">아직 기록한 투찰이 없습니다. 공고 상세 화면의 '내 투찰 기록'에서 사정률이나 투찰금액을 넣고 저장해 보세요. <a href="/">공고 찾기</a></div>
+    }
+    else
+    {
+        <div class="tbl">
+            <table>
+                <thead>
+                    <tr><th>상태</th><th>공고명 · 발주기관</th><th class="r">기초금액</th><th class="r">내 사정률</th><th class="r">내 투찰금액</th><th>마감 · 개찰</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var b in items)
+                    {
+                        var stage = b.StageAt(now);
+                        <tr class="@(stage == MyBidStage.BeforeDue ? "" : "past")">
+                            <td class="nw"><span class="dday @(stage == MyBidStage.BeforeDue ? Display.DDayLevel(b.DueAt, now) : "")">@StageText(stage, b)</span></td>
+                            <td class="namecol">
+                                <a class="tname" href="/notices/@b.NoticeId#mybid">@b.Name</a>
+                                @if (b.BasePriceChanged) { <span class="chip warn">기초금액 바뀜</span> }
+                                <span class="tsub">@b.Agency · <span class="num">@b.BidNo</span>@(b.Memo.Length > 0 ? " · " + b.Memo : "")</span>
+                            </td>
+                            <td class="r num">@Display.Eok(b.BasePrice)</td>
+                            <td class="r num"><b>@b.AssessmentRate.ToString("0.0###", CultureInfo.InvariantCulture)%</b></td>
+                            <td class="r num">@Display.Won(b.BidAmount)원</td>
+                            <td class="num nw">@Display.ShortDateTime(b.DueAt)<span class="tsub">개찰 @Display.ShortDateTime(b.OpenAt)</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="tsub">개찰 결과(1순위 사정률, 내 순위)는 다음 단계에서 나라장터 개찰 결과를 받아 함께 보여 줄 예정입니다.</p>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<MyBidItem> items = [];
+    private DateTime now;
+
+    protected override async Task OnInitializedAsync()
+    {
+        now = Clock.GetLocalNow().DateTime;
+        items = await Store.ListAsync(now, CancellationToken.None);
+    }
+
+    private int Count(MyBidStage stage) => items.Count(x => x.StageAt(now) == stage);
+
+    private string StageText(MyBidStage stage, MyBidItem b) => stage switch
+    {
+        MyBidStage.BeforeDue => Display.DDay(b.DueAt, now),
+        MyBidStage.WaitingOpen => "개찰 대기",
+        MyBidStage.Opened => "개찰 지남",
+        _ => "취소",
+    };
+}

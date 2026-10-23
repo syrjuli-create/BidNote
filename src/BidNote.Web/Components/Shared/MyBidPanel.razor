@@ -1,0 +1,148 @@
+@using System.Globalization
+@using BidNote.Application.Bidding
+@using BidNote.Domain.Bidding
+@inject IMyBidStore Store
+@inject TimeProvider Clock
+
+@* 공고 상세의 "내 투찰 기록" 입력. 사정률을 넣으면 투찰금액을, 투찰금액을 넣으면 사정률을 계산한다. *@
+<section class="panel mybid" id="mybid">
+    <h2 class="sub">내 투찰 기록 <a class="tsub" style="display:inline" href="/mine/bids">모아 보기 →</a></h2>
+    @if (BasePrice is not > 0 || LowerLimitRate <= 0)
+    {
+        <p class="tsub">기초금액과 낙찰하한율이 공개되면 기록할 수 있습니다.</p>
+    }
+    else
+    {
+        @if (saved is not null)
+        {
+            <p class="savedline">
+                기록됨: 사정률 <b class="num">@Rate(saved.AssessmentRate)%</b> · 투찰금액 <b class="num">@Display.Won(saved.BidAmount)원</b>
+                <span class="tsub" style="display:inline">(@Display.DateTimeText(saved.UpdatedAt))</span>
+                @if (saved.BasePriceAtBid is { } old && old != BasePrice)
+                {
+                    <span class="chip warn">기록한 뒤 기초금액이 바뀜: @Display.Won(old) → @Display.Won(BasePrice!.Value)</span>
+                }
+            </p>
+        }
+        <div class="bidform">
+            <label class="f">사정률(%)
+                <input class="in num" inputmode="decimal" value="@rateText" @onchange="OnRateChanged" placeholder="예: 100.123" disabled="@closed" />
+            </label>
+            <label class="f">투찰금액(원)
+                <input class="in num" inputmode="numeric" value="@amountText" @onchange="OnAmountChanged" placeholder="사정률을 넣으면 계산됩니다" disabled="@closed" />
+            </label>
+            <label class="f grow">메모
+                <input class="in" maxlength="@MyBid.MaxMemoLength" @bind="memo" placeholder="예: 업체 평균 99.8 근처" disabled="@closed" />
+            </label>
+        </div>
+        <div class="row">
+            @if (!closed)
+            {
+                <button type="button" class="btn" disabled="@(busy || amount is not > 0 || rate is not > 0)" @onclick="SaveAsync">@(saved is null ? "투찰 기록 저장" : "기록 고치기")</button>
+            }
+            @if (saved is not null)
+            {
+                @if (confirmRemove)
+                {
+                    <span class="tsub" style="display:inline">기록을 지울까요?</span>
+                    <button type="button" class="btn line danger" disabled="@busy" @onclick="RemoveAsync">지우기</button>
+                    <button type="button" class="btn line" @onclick="() => confirmRemove = false">취소</button>
+                }
+                else
+                {
+                    <button type="button" class="btn line" disabled="@busy" @onclick="() => confirmRemove = true">기록 지우기</button>
+                }
+            }
+            <span class="tsub" style="display:inline">@status</span>
+        </div>
+        @if (closed)
+        {
+            <p class="tsub">마감한 공고라 기록을 고칠 수 없습니다.</p>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public int NoticeId { get; set; }
+    [Parameter] public long? BasePrice { get; set; }
+    [Parameter] public double LowerLimitRate { get; set; }
+    [Parameter] public long? AValue { get; set; }
+    [Parameter] public long? NetCost { get; set; }
+    [Parameter] public DateTime DueAt { get; set; }
+
+    private MyBidView? saved;
+    private double? rate;
+    private long? amount;
+    private string rateText = "", amountText = "", memo = "", status = "";
+    private bool busy, closed, confirmRemove;
+
+    protected override async Task OnInitializedAsync()
+    {
+        closed = Clock.GetLocalNow().DateTime >= DueAt;
+        saved = await Store.GetAsync(NoticeId, CancellationToken.None);
+        if (saved is not null)
+        {
+            SetRate(saved.AssessmentRate);
+            SetAmount(saved.BidAmount);
+            memo = saved.Memo;
+        }
+    }
+
+    private void OnRateChanged(ChangeEventArgs e)
+    {
+        status = "";
+        if (!double.TryParse(e.Value?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out double r) || r <= 0)
+        {
+            rate = null; rateText = e.Value?.ToString() ?? "";
+            status = "사정률을 숫자로 넣어 주세요. 예: 100.123";
+            return;
+        }
+        SetRate(r);
+        SetAmount(BidCalculator.Calculate(new BidInput(BasePrice!.Value, r, LowerLimitRate, AValue ?? 0, NetCost ?? 0)).BidAmount);
+    }
+
+    private void OnAmountChanged(ChangeEventArgs e)
+    {
+        status = "";
+        string digits = new((e.Value?.ToString() ?? "").Where(char.IsDigit).ToArray());
+        if (!long.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out long a) || a <= 0)
+        {
+            amount = null; amountText = e.Value?.ToString() ?? "";
+            status = "투찰금액을 숫자로 넣어 주세요.";
+            return;
+        }
+        SetAmount(a);
+        SetRate(Math.Round(BidCalculator.AssessmentRateFor(BasePrice!.Value, LowerLimitRate, AValue ?? 0, a), 4));
+    }
+
+    private void SetRate(double r) { rate = r; rateText = Rate(r); }
+
+    private void SetAmount(long a) { amount = a; amountText = Display.Won(a); }
+
+    private static string Rate(double r) => r.ToString("0.0###", CultureInfo.InvariantCulture);
+
+    private async Task SaveAsync()
+    {
+        busy = true;
+        try
+        {
+            await Store.SaveAsync(new MyBidInput(NoticeId, rate!.Value, amount!.Value, memo), CancellationToken.None);
+            saved = await Store.GetAsync(NoticeId, CancellationToken.None);
+            status = "투찰 기록을 저장했습니다.";
+        }
+        finally { busy = false; }
+    }
+
+    private async Task RemoveAsync()
+    {
+        busy = true;
+        try
+        {
+            await Store.RemoveAsync(NoticeId, CancellationToken.None);
+            saved = null; rate = null; amount = null; rateText = amountText = memo = "";
+            confirmRemove = false;
+            status = "투찰 기록을 지웠습니다.";
+        }
+        finally { busy = false; }
+    }
+}

@@ -157,6 +157,9 @@
             }
         </section>
 
+        <MyBidPanel NoticeId="notice.Id" BasePrice="notice.BasePrice" LowerLimitRate="notice.LowerLimitRate" AValue="notice.AValue"
+                    NetCost="notice.NetCost" DueAt="notice.DueAt" @rendermode="InteractiveServer" />
+
         <section class="panel">
             <h2 class="sub">정정 이력</h2>
             @if (notice.Changes.Count == 0)

@@ -1,0 +1,9 @@
+@* '내 입찰' 메뉴 안의 화면 바꾸기 *@
+<nav class="minetabs" aria-label="내 입찰">
+    <a href="/mine" class="@(Current == "favorites" ? "on" : "")" aria-current="@(Current == "favorites" ? "page" : null)">관심 공고</a>
+    <a href="/mine/bids" class="@(Current == "bids" ? "on" : "")" aria-current="@(Current == "bids" ? "page" : null)">내 투찰 기록</a>
+</nav>
+
+@code {
+    [Parameter, EditorRequired] public string Current { get; set; } = "";
+}
