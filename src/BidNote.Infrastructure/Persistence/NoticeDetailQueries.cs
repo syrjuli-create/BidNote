@@ -33,6 +33,10 @@ public sealed class NoticeDetailQueries(BidNoteDbContext db) : INoticeDetailQuer
             .Where(r => r.SourceSystem == n.SourceSystem && r.BusinessType == n.BusinessType && r.BidNo == n.BidNo && r.ApiName != G2BCollector.BasePriceApi)
             .OrderByDescending(r => r.Id).Select(r => r.ResponseJson).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
 
+        string? priceRaw = await db.ApiRawResponses.AsNoTracking()
+            .Where(r => r.SourceSystem == n.SourceSystem && r.BusinessType == n.BusinessType && r.BidNo == n.BidNo && r.ApiName == G2BCollector.BasePriceApi)
+            .OrderByDescending(r => r.Id).Select(r => r.ResponseJson).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+
         var histories = n.Histories.OrderBy(h => h.DetectedAt).ThenBy(h => h.Id)
             .Select(h => (h.DetectedAt, h.ChangeType, h.SnapshotJson)).ToList();
 
@@ -66,7 +70,14 @@ public sealed class NoticeDetailQueries(BidNoteDbContext db) : INoticeDetailQuer
                 .Select(g => new LicenseGroup(g.Key, [.. g.OrderBy(l => l.Id).Select(l => l.Name)]))],
             Changes = NoticeHistoryDiff.Build(histories, CollectService.SnapshotJson(n)),
             Extras = raw is null ? [] : Extras(raw),
+            CostItems = priceRaw is null ? [] : CostItemsOf(priceRaw),
         };
+    }
+
+    private static IReadOnlyList<CostItem> CostItemsOf(string raw)
+    {
+        using var doc = JsonDocument.Parse(raw);
+        return G2BCollector.CostItems(doc.RootElement);
     }
 
     internal static IReadOnlyList<LabeledValue> Extras(string raw)

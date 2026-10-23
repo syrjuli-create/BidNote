@@ -68,6 +68,34 @@
                         <div><dt>@e.Label</dt><dd class="num">@e.Value</dd></div>
                     }
                 </dl>
+                @if (notice.CostItems.Any(x => x.Amount > 0))
+                {
+                    <details class="aitems" open="@(notice.AValue is not null)">
+                        <summary>A값 내역 <span class="tsub" style="display:inline">나라장터 기초금액 상세와 비교해 보세요</span></summary>
+                        <table class="mini">
+                            <tbody>
+                                @foreach (var c in notice.CostItems.Where(x => x.Amount > 0 || x.InAValue))
+                                {
+                                    <tr class="@(c.InAValue ? "" : "muted")">
+                                        <td>@c.Label@(c.InAValue ? "" : " (A값 아님)")</td>
+                                        <td class="r num">@Display.Won(c.Amount)원</td>
+                                        <td class="r num tsub">@(notice.BasePrice is > 0 && c.Amount > 0 ? (c.Amount * 100.0 / notice.BasePrice.Value).ToString("0.00", CultureInfo.InvariantCulture) + "%" : "")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                            @if (notice.AValue is { } sum)
+                            {
+                                <tfoot>
+                                    <tr><th>A값 합계</th><td class="r num">@Display.Won(sum)원</td><td class="r num tsub">@(notice.BasePrice is > 0 ? (sum * 100.0 / notice.BasePrice.Value).ToString("0.00", CultureInfo.InvariantCulture) + "%" : "")</td></tr>
+                                </tfoot>
+                            }
+                        </table>
+                        @if (notice.AValue is { } s2 && notice.BasePrice is > 0 && s2 * 100.0 / notice.BasePrice.Value > 20)
+                        {
+                            <p class="tsub warn-text">A값이 기초금액의 20%를 넘습니다. 보통은 5% 안팎이니 공고문 금액을 꼭 확인하세요.</p>
+                        }
+                    </details>
+                }
             </section>
         </div>
 

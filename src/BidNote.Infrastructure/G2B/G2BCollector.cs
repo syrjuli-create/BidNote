@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using BidNote.Application.Collecting;
+using BidNote.Application.Notices;
 using BidNote.Domain.Notices;
 using Microsoft.Extensions.Logging;
 
@@ -50,18 +51,35 @@ public sealed class G2BCollector(G2BApiClient client, ILogger<G2BCollector> logg
     /// A값 = 국민건강·국민연금·노인장기요양보험료 + 퇴직공제부금 + 산업안전보건관리비 + 안전관리비 (+ A값 대상인 품질관리비).
     /// 공고가 A값 산식을 쓰지 않으면(bidPrceCalclAYn ≠ Y) null. 항목 구성은 발주기관 공고문으로 다시 확인해야 한다.
     /// </summary>
+    // 기초금액 원문의 비용 항목. A값 = 앞의 7개 합 (품질관리비는 qltyMngcstAObjYn=Y일 때만).
+    private static readonly (string Field, string Label, bool InAValue)[] CostFields =
+    [
+        ("npnInsrprm", "국민연금보험료", true),
+        ("mrfnHealthInsrprm", "국민건강보험료", true),
+        ("odsnLngtrmrcprInsrprm", "노인장기요양보험료", true),
+        ("rtrfundNon", "퇴직공제부금", true),
+        ("sftyMngcst", "산업안전보건관리비", true),
+        ("sftyChckMngcst", "안전관리비", true),
+        ("qltyMngcst", "품질관리비", true),
+        ("envCnsrvcst", "환경보전비", false),
+        ("scontrctPayprcePayGrntyFee", "하도급대금 지급보증수수료", false),
+    ];
+
+    /// <summary>원문의 비용 항목을 A값 포함 여부와 함께 돌려준다. A값 미적용 공고는 모두 A값 밖으로 본다.</summary>
+    public static IReadOnlyList<CostItem> CostItems(JsonElement row)
+    {
+        bool aApplies = Str(row, "bidPrceCalclAYn") == "Y";
+        bool quality = Str(row, "qltyMngcstAObjYn") == "Y";
+        return [.. CostFields.Select(f => new CostItem(f.Label, Long(row, f.Field),
+            aApplies && f.InAValue && (f.Field != "qltyMngcst" || quality)))];
+    }
+
     internal static CollectedBasePrice? MapBasePrice(JsonElement row, string requestParameter)
     {
         long basePrice = Long(row, "bssamt");
         if (basePrice <= 0) return null;
 
-        long? aValue = null;
-        if (Str(row, "bidPrceCalclAYn") == "Y")
-        {
-            aValue = Long(row, "mrfnHealthInsrprm") + Long(row, "npnInsrprm") + Long(row, "odsnLngtrmrcprInsrprm")
-                + Long(row, "rtrfundNon") + Long(row, "sftyMngcst") + Long(row, "sftyChckMngcst")
-                + (Str(row, "qltyMngcstAObjYn") == "Y" ? Long(row, "qltyMngcst") : 0);
-        }
+        long? aValue = Str(row, "bidPrceCalclAYn") == "Y" ? CostItems(row).Where(x => x.InAValue).Sum(x => x.Amount) : null;
         long netCost = Long(row, "bssAmtPurcnstcst");
         string begin = Str(row, "rsrvtnPrceRngBgnRate"), end = Str(row, "rsrvtnPrceRngEndRate");
 

@@ -139,6 +139,24 @@ public class G2BCollectorTests
     }
 
     [Fact]
+    public void A값_내역은_항목별로_나누고_품질관리비_대상이_아니거나_환경보전비는_A값에서_뺀다()
+    {
+        var row = JsonDocument.Parse("""
+            {"bidNtceNo":"R1","bidNtceOrd":"000","bssamt":"100000000","bidPrceCalclAYn":"Y",
+             "npnInsrprm":"100","mrfnHealthInsrprm":"200","odsnLngtrmrcprInsrprm":"30","rtrfundNon":"40",
+             "sftyMngcst":"500","sftyChckMngcst":"600","qltyMngcst":"700","qltyMngcstAObjYn":"N","envCnsrvcst":"800"}
+            """).RootElement;
+
+        var items = G2BCollector.CostItems(row);
+
+        Assert.Equal(1_470, items.Where(x => x.InAValue).Sum(x => x.Amount));
+        Assert.Equal(1_470, G2BCollector.MapBasePrice(row, "q")!.AValue);
+        Assert.False(items.Single(x => x.Label == "품질관리비").InAValue);
+        Assert.False(items.Single(x => x.Label == "환경보전비").InAValue);
+        Assert.Equal(800, items.Single(x => x.Label == "환경보전비").Amount);
+    }
+
+    [Fact]
     public void 기초금액이_0이면_건너뛴다()
     {
         var row = JsonDocument.Parse("""{"bidNtceNo":"R1","bidNtceOrd":"000","bssamt":"0"}""").RootElement;

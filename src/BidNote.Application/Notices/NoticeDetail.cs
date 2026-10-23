@@ -11,6 +11,9 @@ public sealed record NoticeChange(DateTime DetectedAt, NoticeChangeType Type, st
 /// <summary>면허 제한 한 그룹. 그룹 안의 면허는 "또는", 그룹끼리는 "그리고"로 본다.</summary>
 public sealed record LicenseGroup(int GroupNo, IReadOnlyList<string> Names);
 
+/// <summary>기초금액 원문의 비용 항목 하나. InAValue면 A값에 더한 항목이다.</summary>
+public sealed record CostItem(string Label, long Amount, bool InAValue);
+
 public sealed record NoticeDetail
 {
     public required int Id { get; init; }
@@ -38,6 +41,9 @@ public sealed record NoticeDetail
     public string DetailUrl { get; init; } = "";
     public DateTime LastCheckedAt { get; init; }
     public IReadOnlyList<LicenseGroup> Licenses { get; init; } = [];
+
+    /// <summary>A값을 이루는 항목과 A값에 넣지 않는 비용 항목. 기초금액 원문이 없으면 비어 있다.</summary>
+    public IReadOnlyList<CostItem> CostItems { get; init; } = [];
 
     /// <summary>정정 이력. 최근 것이 앞에 온다.</summary>
     public IReadOnlyList<NoticeChange> Changes { get; init; } = [];

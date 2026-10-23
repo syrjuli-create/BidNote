@@ -261,3 +261,13 @@ main { max-width: 1240px; margin: 0 auto; padding: 28px 24px 72px; }
 .pager a:hover { border-color: var(--brand); color: var(--brand); }
 .pager .cur { background: var(--brand); color: #fff; font-weight: 700; }
 .pager .gap { color: var(--muted); }
+
+/* 공고 상세: A값 내역 */
+.aitems { margin-top: 14px; border-top: 1px solid var(--line, #e5e7eb); padding-top: 10px; }
+.aitems summary { cursor: pointer; font-weight: 600; }
+.aitems table.mini { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+.aitems table.mini td, .aitems table.mini th { padding: 5px 4px; border-bottom: 1px solid var(--line, #eef0f3); text-align: left; font-weight: normal; }
+.aitems table.mini .r { text-align: right; }
+.aitems table.mini tfoot th, .aitems table.mini tfoot td { font-weight: 700; border-bottom: 0; }
+.aitems tr.muted td { color: #8a8f98; }
+.aitems .warn-text { color: #b45309; margin-top: 6px; }
