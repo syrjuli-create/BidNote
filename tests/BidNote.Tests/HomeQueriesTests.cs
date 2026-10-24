@@ -64,6 +64,33 @@ public sealed class HomeQueriesTests : IDisposable
     }
 
     [Fact]
+    public async Task 빠른_보기_숫자는_지금_조건_안에서_세고_눌렀을_때의_목록_건수와_같다()
+    {
+        using (var db = testDb.NewContext())
+        {
+            db.Notices.AddRange(
+                Notice("대전-임박-새", due: Now.AddHours(20), posted: Now.AddDays(-1), region: "대전"),
+                Notice("대전-정정", due: Now.AddDays(5), posted: Now.AddDays(-10), seq: 1, region: "대전"),
+                Notice("대전-보통", due: Now.AddDays(5), posted: Now.AddDays(-10), region: "대전"),
+                Notice("충남-임박-새", due: Now.AddHours(20), posted: Now.AddDays(-1), region: "충남"));
+            await db.SaveChangesAsync();
+        }
+        using var ctx = testDb.NewContext();
+        var repo = new NoticeRepository(ctx);
+        // 정정만 보고 있는 상태에서도 타일은 빠른 보기를 뺀 대전 기준으로 센다.
+        var current = new NoticeFilter { Regions = ["대전"], CorrectedOnly = true, DueWithinDays = 3 };
+
+        var quick = await repo.CountQuickAsync(current, Now, CancellationToken.None);
+
+        Assert.Equal(new QuickCounts(3, 1, 1, 1), quick);
+        var baseFilter = new NoticeFilter { Regions = ["대전"] };
+        Assert.Equal(quick.Active, (await repo.SearchAsync(baseFilter, Now, CancellationToken.None)).TotalCount);
+        Assert.Equal(quick.ClosingSoon, (await repo.SearchAsync(baseFilter with { DueWithinDays = 1 }, Now, CancellationToken.None)).TotalCount);
+        Assert.Equal(quick.New, (await repo.SearchAsync(baseFilter with { NewOnly = true }, Now, CancellationToken.None)).TotalCount);
+        Assert.Equal(quick.Corrected, (await repo.SearchAsync(baseFilter with { CorrectedOnly = true }, Now, CancellationToken.None)).TotalCount);
+    }
+
+    [Fact]
     public async Task 업종_필터는_면허_제한_중_하나만_맞아도_찾고_업종_목록도_면허_기준으로_센다()
     {
         using (var db = testDb.NewContext())

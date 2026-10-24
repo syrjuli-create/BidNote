@@ -12,7 +12,7 @@ public sealed class CollectorSettingsStore(BidNoteDbContext db, IOptions<Collect
         var row = await db.CollectorSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == CollectorSetting.SingletonId, cancellationToken).ConfigureAwait(false);
         return row is null
             ? new CollectorSettingsValues(defaults.Value.BackfillDays, defaults.Value.IntervalMinutes, null)
-            : new CollectorSettingsValues(row.BackfillDays, row.IntervalMinutes, row.LastSuccessTo);
+            : new CollectorSettingsValues(row.BackfillDays, row.IntervalMinutes, row.LastSuccessTo, row.ResultsLastSuccessTo);
     }
 
     public async Task SaveAsync(int backfillDays, int intervalMinutes, CancellationToken cancellationToken)
@@ -29,6 +29,13 @@ public sealed class CollectorSettingsStore(BidNoteDbContext db, IOptions<Collect
     {
         var row = await RowAsync(cancellationToken).ConfigureAwait(false);
         if (row.LastSuccessTo is null || collectedTo > row.LastSuccessTo) row.LastSuccessTo = collectedTo;
+        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task MarkResultsSuccessAsync(DateTime collectedTo, CancellationToken cancellationToken)
+    {
+        var row = await RowAsync(cancellationToken).ConfigureAwait(false);
+        if (row.ResultsLastSuccessTo is null || collectedTo > row.ResultsLastSuccessTo) row.ResultsLastSuccessTo = collectedTo;
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 

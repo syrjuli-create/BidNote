@@ -65,7 +65,7 @@ public sealed class CollectorHostedService(
             logger.LogInformation("수집 결과({Trigger}): 새 공고 {Added}건, 변경 {Changed}건, 변화 없음 {Unchanged}건, 기초금액 {BasePrices}건, 원문 저장 {RawSaved}건",
                 trigger, result.Added, result.Changed, result.Unchanged, result.BasePricesUpdated, result.RawSaved);
             state.Record(new CollectRun(to, trigger, result, null));
-            await CollectResultsAsync(scope.ServiceProvider.GetRequiredService<IBidResultService>(), from, to, backfillDays, stoppingToken);
+            await CollectResultsAsync(scope.ServiceProvider, from, to, backfillDays, stoppingToken);
             return true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -77,20 +77,26 @@ public sealed class CollectorHostedService(
         }
     }
 
-    /// <summary>개찰 결과를 받는다. 아직 하나도 없으면 공고 백필 기간만큼 거슬러 받는다.</summary>
-    private async Task CollectResultsAsync(IBidResultService results, DateTime from, DateTime to, int backfillDays, CancellationToken stoppingToken)
+    /// <summary>
+    /// 개찰 결과를 받는다. 공고와 따로 실패할 수 있어 성공 시각을 따로 기록하고, 실패했으면 다음 수집 때
+    /// 그 시각부터 다시 받는다 (<see cref="CollectorRules.ResultsFrom"/>). 순위는 실패해도 다음 수집 때 다시 고른다.
+    /// </summary>
+    private async Task CollectResultsAsync(IServiceProvider services, DateTime from, DateTime to, int backfillDays, CancellationToken stoppingToken)
     {
+        var results = services.GetRequiredService<IBidResultService>();
+        var settingsStore = services.GetRequiredService<ICollectorSettingsStore>();
         try
         {
-            if (!await results.HasAnyAsync(stoppingToken)) from = to.AddDays(-Math.Max(backfillDays, 1));
+            var settings = await settingsStore.GetAsync(stoppingToken);
+            from = CollectorRules.ResultsFrom(from, to, settings.ResultsLastSuccessTo, await results.HasAnyAsync(stoppingToken), backfillDays);
             int updated = await results.CollectOpeningsAsync(from, to, stoppingToken);
+            await settingsStore.MarkResultsSuccessAsync(to, stoppingToken);
             int ranks = await results.FetchPendingRanksAsync(PendingRanksPerRun, stoppingToken);
-            logger.LogInformation("개찰 결과: 반영 {Updated}건, 순위 받음 {Ranks}건", updated, ranks);
+            logger.LogInformation("개찰 결과: {From:yyyy-MM-dd HH:mm}~{To:yyyy-MM-dd HH:mm} 반영 {Updated}건, 순위 받음 {Ranks}건", from, to, updated, ranks);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // 공고 수집과 따로 실패한다. 빠진 기간은 수집 설정의 '다시 받기'로 채울 수 있다.
-            logger.LogWarning(ex, "개찰 결과 수집 실패: {From:yyyy-MM-dd HH:mm}~{To:yyyy-MM-dd HH:mm}", from, to);
+            logger.LogWarning(ex, "개찰 결과 수집 실패: {From:yyyy-MM-dd HH:mm}~{To:yyyy-MM-dd HH:mm}. 다음 수집 때 이어서 다시 받습니다.", from, to);
         }
     }
 

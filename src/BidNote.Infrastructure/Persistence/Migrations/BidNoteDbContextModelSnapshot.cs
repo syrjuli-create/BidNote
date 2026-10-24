@@ -149,6 +149,9 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("LastSuccessTo")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("ResultsLastSuccessTo")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
