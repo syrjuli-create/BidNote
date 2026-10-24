@@ -73,8 +73,17 @@ public sealed record NoticeSearchResult(
     public int PageCount => Math.Max(1, (TotalCount + PageSize - 1) / PageSize);
 }
 
+/// <summary>빠른 보기 타일 숫자. 빠른 보기(마감·새 공고·정정)를 뺀 지금 조건 안에서 센다.</summary>
+public sealed record QuickCounts(int Active, int ClosingSoon, int New, int Corrected);
+
 public interface IHomeQueries
 {
+    /// <summary>
+    /// 빠른 보기 타일 숫자. <paramref name="filter"/>에서 마감·정정·새 공고 조건은 빼고(진행 중),
+    /// 그 위에 빠른 보기 하나씩을 더해 센다. 타일을 눌렀을 때 나오는 목록 건수와 같다.
+    /// </summary>
+    Task<QuickCounts> CountQuickAsync(NoticeFilter filter, DateTime now, CancellationToken cancellationToken);
+
     /// <summary>메인 화면에 보여 줄 요약. 마감이 지나지 않은 공고만 센다.</summary>
     Task<HomeSummary> GetSummaryAsync(DateTime now, CancellationToken cancellationToken);
 

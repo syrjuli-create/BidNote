@@ -41,9 +41,46 @@ public sealed class NoticeRepository(BidNoteDbContext db) : INoticeRepository, I
     public async Task<NoticeSearchResult> SearchAsync(NoticeFilter filter, DateTime now, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(filter);
-        var open = db.Notices.AsNoTracking().Where(x => x.IsActive && x.DueAt > now);
+        var open = Open(now);
+        var q = await WhereAsync(open, filter, now, cancellationToken).ConfigureAwait(false);
+        q = filter.Sort switch
+        {
+            NoticeSort.AmountHigh => q.OrderByDescending(x => x.BasePrice).ThenBy(x => x.DueAt),
+            NoticeSort.Newest => q.OrderByDescending(x => x.PostedAt).ThenBy(x => x.DueAt),
+            _ => q.OrderBy(x => x.DueAt).ThenBy(x => x.Id),
+        };
 
-        var q = open;
+        int size = Math.Clamp(filter.PageSize, 1, HomeRules.MaxPageSize);
+        int total = await q.CountAsync(cancellationToken).ConfigureAwait(false);
+        int pageCount = Math.Max(1, (total + size - 1) / size);
+        int page = Math.Clamp(filter.Page, 1, pageCount); // 범위를 넘는 페이지는 마지막 페이지로
+        var items = await Project(q.Skip((page - 1) * size).Take(size)).ToListAsync(cancellationToken).ConfigureAwait(false);
+        var regions = await Facet(open.GroupBy(x => x.Region), cancellationToken).ConfigureAwait(false);
+        var licenses = await LicenseFacet(open, cancellationToken).ConfigureAwait(false);
+        var contracts = await Facet(open.GroupBy(x => x.ContractMethod), cancellationToken).ConfigureAwait(false);
+        return new NoticeSearchResult(items, regions, licenses) { TotalCount = total, Page = page, PageSize = size, ContractMethods = contracts };
+    }
+
+    public async Task<QuickCounts> CountQuickAsync(NoticeFilter filter, DateTime now, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+        // 목록과 같은 조건 함수(WhereAsync)로 세야 타일 숫자와 눌렀을 때의 건수가 어긋나지 않는다.
+        var baseFilter = filter with { DueWithinDays = null, CorrectedOnly = false, NewOnly = false };
+        var q = await WhereAsync(Open(now), baseFilter, now, cancellationToken).ConfigureAwait(false);
+        DateTime closing = HomeRules.ClosingSoonLimit(now);
+        DateTime since = now - HomeRules.NewWindow;
+        return new QuickCounts(
+            await q.CountAsync(cancellationToken).ConfigureAwait(false),
+            await q.CountAsync(x => x.DueAt < closing, cancellationToken).ConfigureAwait(false),
+            await q.CountAsync(x => x.PostedAt >= since, cancellationToken).ConfigureAwait(false),
+            await q.CountAsync(x => x.CorrectionCount > 0, cancellationToken).ConfigureAwait(false));
+    }
+
+    private IQueryable<Notice> Open(DateTime now) => db.Notices.AsNoTracking().Where(x => x.IsActive && x.DueAt > now);
+
+    /// <summary>목록 조건(정렬·페이지 제외)을 건다.</summary>
+    private async Task<IQueryable<Notice>> WhereAsync(IQueryable<Notice> q, NoticeFilter filter, DateTime now, CancellationToken cancellationToken)
+    {
         if (!string.IsNullOrWhiteSpace(filter.Keyword))
         {
             string k = filter.Keyword.Trim();
@@ -81,22 +118,7 @@ public sealed class NoticeRepository(BidNoteDbContext db) : INoticeRepository, I
             List<int> ids = [.. await CompanyStore.EligibleOpenNoticeIdsAsync(db, now, cancellationToken).ConfigureAwait(false)];
             q = q.Where(x => ids.Contains(x.Id));
         }
-        q = filter.Sort switch
-        {
-            NoticeSort.AmountHigh => q.OrderByDescending(x => x.BasePrice).ThenBy(x => x.DueAt),
-            NoticeSort.Newest => q.OrderByDescending(x => x.PostedAt).ThenBy(x => x.DueAt),
-            _ => q.OrderBy(x => x.DueAt).ThenBy(x => x.Id),
-        };
-
-        int size = Math.Clamp(filter.PageSize, 1, HomeRules.MaxPageSize);
-        int total = await q.CountAsync(cancellationToken).ConfigureAwait(false);
-        int pageCount = Math.Max(1, (total + size - 1) / size);
-        int page = Math.Clamp(filter.Page, 1, pageCount); // 범위를 넘는 페이지는 마지막 페이지로
-        var items = await Project(q.Skip((page - 1) * size).Take(size)).ToListAsync(cancellationToken).ConfigureAwait(false);
-        var regions = await Facet(open.GroupBy(x => x.Region), cancellationToken).ConfigureAwait(false);
-        var licenses = await LicenseFacet(open, cancellationToken).ConfigureAwait(false);
-        var contracts = await Facet(open.GroupBy(x => x.ContractMethod), cancellationToken).ConfigureAwait(false);
-        return new NoticeSearchResult(items, regions, licenses) { TotalCount = total, Page = page, PageSize = size, ContractMethods = contracts };
+        return q;
     }
 
     private static async Task<List<FacetCount>> Facet(IQueryable<IGrouping<string, Notice>> groups, CancellationToken cancellationToken)
