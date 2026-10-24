@@ -16,5 +16,8 @@ public class CollectorSetting
     /// <summary>마지막으로 수집에 성공한 구간의 끝. 다음에 켜면 여기서부터 이어 받는다.</summary>
     public DateTime? LastSuccessTo { get; set; }
 
+    /// <summary>개찰 결과 수집이 마지막으로 성공한 구간의 끝. 실패하면 다음 수집 때 여기서부터 다시 받는다.</summary>
+    public DateTime? ResultsLastSuccessTo { get; set; }
+
     public DateTime UpdatedAt { get; set; }
 }

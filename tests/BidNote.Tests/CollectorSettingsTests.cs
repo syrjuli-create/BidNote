@@ -37,6 +37,33 @@ public sealed class CollectorSettingsTests : IDisposable
         Assert.Equal(Now, (await store.GetAsync(CancellationToken.None)).LastSuccessTo);
     }
 
+    [Fact]
+    public async Task 개찰_결과_성공_시각은_공고와_따로_기록하고_뒤로_가지_않는다()
+    {
+        using var db = testDb.NewContext();
+        var store = Store(db);
+        await store.MarkSuccessAsync(Now, CancellationToken.None);
+        await store.MarkResultsSuccessAsync(Now.AddHours(-2), CancellationToken.None);
+        await store.MarkResultsSuccessAsync(Now.AddDays(-10), CancellationToken.None);
+
+        var values = await store.GetAsync(CancellationToken.None);
+        Assert.Equal(Now, values.LastSuccessTo);
+        Assert.Equal(Now.AddHours(-2), values.ResultsLastSuccessTo);
+    }
+
+    [Fact]
+    public void 개찰_결과는_실패해_멈춘_시각부터_다시_받고_처음이면_설정_기간만큼_받는다()
+    {
+        DateTime from = Now.AddMinutes(-10);
+
+        Assert.Equal(from, CollectorRules.ResultsFrom(from, Now, from, hasAnyResult: true, 14));                     // 지난번 성공: 같은 구간
+        Assert.Equal(Now.AddHours(-5), CollectorRules.ResultsFrom(from, Now, Now.AddHours(-5), true, 14));          // 지난번 실패: 멈춘 곳부터
+        Assert.Equal(Now.AddDays(-3), CollectorRules.ResultsFrom(Now.AddDays(-3), Now, Now.AddHours(-1), true, 14)); // 다시 받기 구간이 더 앞이면 그 구간
+        Assert.Equal(from, CollectorRules.ResultsFrom(from, Now, null, hasAnyResult: true, 14));                     // 기록 전부터 결과가 있던 DB
+        Assert.Equal(Now.AddDays(-14), CollectorRules.ResultsFrom(from, Now, null, hasAnyResult: false, 14));       // 처음
+        Assert.Equal(Now.AddDays(-60), CollectorRules.ResultsFrom(from, Now, Now.AddDays(-200), true, 14));         // 최대 60일
+    }
+
     [Theory]
     [InlineData(0, 10)]
     [InlineData(61, 10)]

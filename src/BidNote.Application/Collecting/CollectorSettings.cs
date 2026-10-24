@@ -1,6 +1,7 @@
 namespace BidNote.Application.Collecting;
 
-public sealed record CollectorSettingsValues(int BackfillDays, int IntervalMinutes, DateTime? LastSuccessTo);
+/// <param name="ResultsLastSuccessTo">개찰 결과 수집이 마지막으로 성공한 구간의 끝. 공고 수집과 따로 실패할 수 있어 따로 둔다.</param>
+public sealed record CollectorSettingsValues(int BackfillDays, int IntervalMinutes, DateTime? LastSuccessTo, DateTime? ResultsLastSuccessTo = null);
 
 /// <summary>설정 파일의 기본값. 화면에서 한 번이라도 저장하면 DB 값이 우선한다.</summary>
 public sealed class CollectorOptions
@@ -18,6 +19,9 @@ public interface ICollectorSettingsStore
     Task SaveAsync(int backfillDays, int intervalMinutes, CancellationToken cancellationToken);
 
     Task MarkSuccessAsync(DateTime collectedTo, CancellationToken cancellationToken);
+
+    /// <summary>개찰 결과를 이 시각까지 받았다고 기록한다.</summary>
+    Task MarkResultsSuccessAsync(DateTime collectedTo, CancellationToken cancellationToken);
 }
 
 public static class CollectorRules
@@ -48,6 +52,19 @@ public static class CollectorRules
         DateTime oldest = now.AddDays(-MaxBackfillDays);
         if (lastSuccessTo is { } last) return last < oldest ? oldest : last;
         return now.AddDays(-backfillDays);
+    }
+
+    /// <summary>
+    /// 개찰 결과를 어디서부터 받을지. 공고와 같은 구간(<paramref name="from"/>)을 받되, 개찰 결과가 그보다 앞에서 실패해 멈췄으면
+    /// 그 시각부터 다시 받는다. 한 번도 받은 적이 없으면 설정 기간만큼 거슬러 받는다. 최대 기간보다 앞으로는 가지 않는다.
+    /// </summary>
+    public static DateTime ResultsFrom(DateTime from, DateTime to, DateTime? resultsLastSuccessTo, bool hasAnyResult, int backfillDays)
+    {
+        DateTime start = resultsLastSuccessTo is { } last ? (last < from ? last : from)
+            : hasAnyResult ? from
+            : to.AddDays(-Math.Max(backfillDays, MinBackfillDays));
+        DateTime oldest = to.AddDays(-MaxBackfillDays);
+        return start < oldest ? oldest : start;
     }
 
     /// <summary>며칠치를 받을 때의 대략적인 API 호출 수 (공고 목록·면허·기초금액, 한 번에 999건).</summary>
