@@ -75,6 +75,12 @@ public sealed class NoticeRepository(BidNoteDbContext db) : INoticeRepository, I
             DateTime since = now - HomeRules.NewWindow;
             q = q.Where(x => x.PostedAt >= since);
         }
+        if (filter.MyLicensesOnly)
+        {
+            // 그룹 판정(그룹끼리 "또는", 그룹 안 "그리고", 허용 업종)은 SQL로 옮기지 않고 판정 규칙 한 곳(LicenseEligibility)을 쓴다.
+            List<int> ids = [.. await CompanyStore.EligibleOpenNoticeIdsAsync(db, now, cancellationToken).ConfigureAwait(false)];
+            q = q.Where(x => ids.Contains(x.Id));
+        }
         q = filter.Sort switch
         {
             NoticeSort.AmountHigh => q.OrderByDescending(x => x.BasePrice).ThenBy(x => x.DueAt),

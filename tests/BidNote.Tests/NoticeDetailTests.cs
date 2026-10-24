@@ -76,7 +76,7 @@ public sealed class NoticeDetailTests : IDisposable
         var d = await new NoticeDetailQueries(ctx).GetAsync(id, CancellationToken.None);
 
         Assert.NotNull(d);
-        Assert.Equal([new[] { "실내건축공사업", "건축공사업" }, new[] { "전기공사업" }], d.Licenses.Select(g => g.Names.ToArray()));
+        Assert.Equal([new[] { "실내건축공사업", "건축공사업" }, new[] { "전기공사업" }], d.Licenses.Select(g => g.Items.Select(x => x.Name).ToArray()));
         // 0원·빈 값은 빼고, 금액은 원 단위로
         Assert.Equal([new LabeledValue("계약방법", "제한경쟁"), new LabeledValue("추정가격", "169,454,545원")], d.Extras);
         Assert.Empty(d.Changes);

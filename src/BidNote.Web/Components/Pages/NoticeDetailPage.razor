@@ -4,7 +4,9 @@
 @using BidNote.Application.Notices
 @using BidNote.Domain.Bidding
 @using BidNote.Domain.Notices
+@using BidNote.Domain.Company
 @inject INoticeDetailQueries Queries
+@inject BidNote.Application.Company.ICompanyStore Company
 @inject TimeProvider Clock
 
 <PageTitle>@(notice?.Name ?? "공고 상세") · 입찰노트</PageTitle>
@@ -100,7 +102,16 @@
         </div>
 
         <section class="panel">
-            <h2 class="sub">면허(업종) 제한</h2>
+            <h2 class="sub">면허(업종) 제한
+                @if (eligibility is { Kind: EligibilityKind.Eligible })
+                {
+                    <span class="chip ok">내 면허로 참여 가능</span>
+                }
+                else if (eligibility is { Kind: EligibilityKind.NotEligible } ne)
+                {
+                    <span class="chip warn">면허 부족: @string.Join(", ", ne.Missing)</span>
+                }
+            </h2>
             @if (notice.Licenses.Count == 0)
             {
                 <p class="tsub">면허 제한 정보가 없습니다.@(notice.License.Length > 0 ? $" 대표 업종: {notice.License}" : "")</p>
@@ -111,17 +122,22 @@
                     @for (int i = 0; i < notice.Licenses.Count; i++)
                     {
                         var g = notice.Licenses[i];
-                        @if (i > 0) { <span class="and">그리고</span> }
-                        <div class="lgroup">
-                            @for (int j = 0; j < g.Names.Count; j++)
+                        @if (i > 0) { <span class="or">또는</span> }
+                        <div class="lgroup @(eligibility?.GroupNo == g.GroupNo ? "near" : "")">
+                            @for (int j = 0; j < g.Items.Count; j++)
                             {
-                                @if (j > 0) { <span class="or">또는</span> }
-                                <span class="lic">@g.Names[j]</span>
+                                var item = g.Items[j];
+                                @if (j > 0) { <span class="and">그리고</span> }
+                                <span class="lic">@item.Name@if (item.Alternatives.Count > 0) {<span class="alt"> (@string.Join(", ", item.Alternatives)도 인정)</span>}</span>
                             }
                         </div>
                     }
                 </div>
-                <p class="tsub">같은 줄은 그중 하나만, 줄이 여러 개면 모두 갖춰야 하는 것으로 봅니다. 정확한 조건은 공고문을 확인하세요.</p>
+                <p class="tsub">한 줄 안의 면허는 모두 갖춰야 하고, 줄이 여러 개면 그중 한 줄만 갖추면 됩니다. 주력분야 제한은 따지지 않으니 정확한 조건은 공고문을 확인하세요.</p>
+                @if (eligibility is null)
+                {
+                    <p class="tsub"><a href="/me">내 정보</a>에 면허를 등록하면 참여할 수 있는지 바로 알려 드립니다.</p>
+                }
             }
         </section>
 
@@ -203,6 +219,7 @@
     [Parameter] public int Id { get; set; }
 
     private NoticeDetail? notice;
+    private Eligibility? eligibility;
     private DateTime now;
     private static readonly HashSet<string> MoneyLabels = ["예산금액", "추정가격"];
 
@@ -210,6 +227,7 @@
     {
         now = Clock.GetLocalNow().DateTime;
         notice = await Queries.GetAsync(Id, CancellationToken.None);
+        eligibility = notice is null ? null : await Company.CheckAsync(Id, CancellationToken.None);
     }
 
     private static string Or(string s) => string.IsNullOrWhiteSpace(s) ? "-" : s;

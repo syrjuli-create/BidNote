@@ -1,0 +1,153 @@
+@page "/me"
+@rendermode InteractiveServer
+@using System.Globalization
+@using BidNote.Application.Company
+@using BidNote.Domain.Company
+@using BidNote.Domain.Notices
+@inject ICompanyStore Store
+@inject TimeProvider Clock
+
+<PageTitle>내 정보 · 입찰노트</PageTitle>
+
+<div class="stack">
+    <div class="listhead"><h1>회사·면허 정보</h1></div>
+
+    <section class="panel">
+        <h2 class="sub">보유 면허</h2>
+        @if (info is null)
+        {
+            <p class="tsub">불러오는 중입니다.</p>
+        }
+        else
+        {
+            @if (info.Licenses.Count == 0)
+            {
+                <p class="tsub">아직 등록한 면허가 없습니다. 나라장터 면허 제한 이름과 같게 골라야 공고와 맞춰 볼 수 있습니다.</p>
+            }
+            else
+            {
+                <div class="licenses">
+                    @foreach (string l in info.Licenses)
+                    {
+                        <span class="lic">@l <button type="button" class="x" aria-label="@(l) 빼기" disabled="@busy" @onclick="() => RemoveAsync(l)">×</button></span>
+                    }
+                </div>
+            }
+            <div class="row" style="margin-top:12px">
+                <input class="in" list="license-options" placeholder="면허 이름 (예: 지반조성ㆍ포장공사업)" aria-label="추가할 면허"
+                       maxlength="@CompanyLicense.MaxNameLength" @bind="newLicense" @bind:event="oninput" @onkeyup="OnKeyUpAsync" />
+                <button type="button" class="btn" disabled="@(busy || newLicense.Trim().Length == 0)" @onclick="AddAsync">추가</button>
+            </div>
+            <datalist id="license-options">
+                @foreach (var o in options.Where(o => !info.Licenses.Contains(o.Name)))
+                {
+                    <option value="@o.Name">진행 공고 @(o.OpenNoticeCount)건</option>
+                }
+            </datalist>
+            @if (licenseStatus.Length > 0) { <p class="tsub" role="status">@licenseStatus</p> }
+
+            @if (summary is { } s && info.HasLicenses)
+            {
+                <dl class="kv" style="margin-top:12px">
+                    <div class="big"><dt>내 면허로 참여 가능</dt><dd class="num"><a href="/?mine=true">진행 공고 @s.Eligible.ToString("N0", CultureInfo.InvariantCulture)건 보기 →</a></dd></div>
+                    <div><dt>면허가 맞지 않는 공고</dt><dd class="num">@s.NotEligible.ToString("N0", CultureInfo.InvariantCulture)건</dd></div>
+                    <div><dt>면허 제한 정보 없음</dt><dd class="num">@s.Unknown.ToString("N0", CultureInfo.InvariantCulture)건</dd></div>
+                </dl>
+                <p class="tsub">공고의 면허 제한 중 한 줄(그룹)의 면허를 모두 갖추면 참여 가능으로 봅니다. 토목건축공사업처럼 대신 인정하는 업종도 따집니다. 주력분야·지역 제한·시공능력은 따지지 않습니다.</p>
+            }
+        }
+    </section>
+
+    <section class="panel">
+        <h2 class="sub">회사 정보</h2>
+        <div class="formgrid">
+            <label class="f">회사명<input class="in" maxlength="@CompanyProfile.MaxNameLength" @bind="form.Name" /></label>
+            <label class="f">사업자번호<input class="in" inputmode="numeric" placeholder="000-00-00000" maxlength="@CompanyProfile.MaxBizNoLength" @bind="form.BizNo" /></label>
+            <label class="f">소재지
+                <select class="in" @bind="form.Region">
+                    <option value="">선택 안 함</option>
+                    @foreach (string r in Regions)
+                    {
+                        <option value="@r">@r</option>
+                    }
+                </select>
+            </label>
+            <label class="f">이메일<input class="in" type="email" maxlength="@CompanyProfile.MaxEmailLength" @bind="form.Email" /></label>
+        </div>
+        <div class="row" style="margin-top:12px">
+            <button type="button" class="btn" disabled="@busy" @onclick="SaveProfileAsync">저장</button>
+            <span class="tsub" style="display:inline" role="status">@profileStatus</span>
+        </div>
+        <p class="tsub">이 PC의 DB에만 저장합니다. 주민등록번호 같은 개인 식별 정보는 받지 않습니다. 소재지는 다음 단계(지역 제한 판정)에 씁니다.</p>
+    </section>
+</div>
+
+@code {
+    // "전남·광주" 같은 묶음 이름은 소재지로 고를 일이 없어 뺀다.
+    private static readonly string[] Regions = [.. RegionNames.LongNames.Select(RegionNames.ToShort).Where(x => !x.Contains('·')).Distinct()];
+
+    private CompanyInfo? info;
+    private IReadOnlyList<LicenseOption> options = [];
+    private EligibilitySummary? summary;
+    private Form form = new();
+    private string newLicense = "", licenseStatus = "", profileStatus = "";
+    private bool busy;
+
+    private sealed class Form
+    {
+        public string Name { get; set; } = "";
+        public string BizNo { get; set; } = "";
+        public string Region { get; set; } = "";
+        public string Email { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        form = new Form { Name = info!.Name, BizNo = info.BizNo, Region = info.Region, Email = info.Email };
+        options = await Store.LicenseOptionsAsync(Clock.GetLocalNow().DateTime, CancellationToken.None);
+    }
+
+    private async Task LoadAsync()
+    {
+        info = await Store.GetAsync(CancellationToken.None);
+        summary = info.HasLicenses ? await Store.SummaryAsync(Clock.GetLocalNow().DateTime, CancellationToken.None) : null;
+    }
+
+    private async Task OnKeyUpAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !busy && newLicense.Trim().Length > 0) await AddAsync();
+    }
+
+    private async Task AddAsync()
+    {
+        busy = true;
+        string name = newLicense.Trim();
+        bool known = options.Any(o => o.Name == name);
+        bool added = await Store.AddLicenseAsync(name, CancellationToken.None);
+        licenseStatus = !added ? $"'{name}'은(는) 이미 등록돼 있습니다."
+            : known ? $"'{name}'을(를) 등록했습니다."
+            : $"'{name}'을(를) 등록했습니다. 진행 중 공고의 면허 제한에는 없는 이름이니 철자를 확인하세요.";
+        newLicense = "";
+        await LoadAsync();
+        busy = false;
+    }
+
+    private async Task RemoveAsync(string name)
+    {
+        busy = true;
+        await Store.RemoveLicenseAsync(name, CancellationToken.None);
+        licenseStatus = $"'{name}'을(를) 뺐습니다.";
+        await LoadAsync();
+        busy = false;
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        busy = true;
+        await Store.SaveProfileAsync(new CompanyProfileInput(form.Name, form.BizNo, form.Region, form.Email), CancellationToken.None);
+        profileStatus = "저장했습니다.";
+        await LoadAsync();
+        busy = false;
+    }
+}

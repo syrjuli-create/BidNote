@@ -6,6 +6,7 @@
 @inject IConfiguration Config
 @inject BidNote.Application.Favorites.IFavoriteStore Favorites
 @inject ISavedSearchStore Searches
+@inject BidNote.Application.Company.ICompanyStore Company
 
 <PageTitle>입찰노트</PageTitle>
 
@@ -82,6 +83,14 @@
             </label>
             <label class="check"><input type="checkbox" name="corrected" value="true" checked="@(Corrected == true)" /> 정정 공고만</label>
             <label class="check"><input type="checkbox" name="new" value="true" checked="@(IsNew == true)" /> 최근 5일 새 공고만</label>
+            @if (myEligible is { } eligible)
+            {
+                <label class="check"><input type="checkbox" name="mine" value="true" checked="@(Mine == true)" /> 내 면허로 참여 가능 <span class="cnt">@eligible</span></label>
+            }
+            else
+            {
+                <p class="tsub"><a href="/me">내 정보</a>에 면허를 등록하면 참여 가능한 공고만 골라 볼 수 있습니다.</p>
+            }
             <div class="row">
                 <button class="btn" type="submit">적용</button>
                 <a class="btn line" href="@ResetUrl">초기화</a>
@@ -167,6 +176,10 @@
     [SupplyParameterFromQuery(Name = "sort")] public string? Sort { get; set; }
     [SupplyParameterFromQuery(Name = "page")] public int? PageNo { get; set; }
     [SupplyParameterFromQuery(Name = "reset")] public bool? Reset { get; set; }
+    [SupplyParameterFromQuery(Name = "mine")] public bool? Mine { get; set; }
+
+    /// <summary>내 면허로 참여 가능한 진행 공고 수. 면허를 등록하지 않았으면 null.</summary>
+    private int? myEligible;
 
     /// <summary>"/"만 열면 마지막 조건으로 돌아가므로, 필터를 비울 때는 이 주소로 마지막 조건까지 지운다.</summary>
     private const string ResetUrl = "/?reset=true";
@@ -207,11 +220,11 @@
 
     private bool IsPlain => string.IsNullOrEmpty(Q) && (Region?.Length ?? 0) == 0 && string.IsNullOrEmpty(License)
         && string.IsNullOrEmpty(Contract) && NoNegotiated != true
-        && string.IsNullOrEmpty(Amount) && Due is null && Corrected != true && IsNew != true;
+        && string.IsNullOrEmpty(Amount) && Due is null && Corrected != true && IsNew != true && Mine != true;
 
     /// <summary>빠른 보기 하나만 걸린 상태인지 (다른 필터가 같이 걸렸으면 강조하지 않는다).</summary>
     private bool OnlyOne => string.IsNullOrEmpty(Q) && (Region?.Length ?? 0) == 0 && string.IsNullOrEmpty(License) && string.IsNullOrEmpty(Amount)
-        && string.IsNullOrEmpty(Contract) && NoNegotiated != true
+        && string.IsNullOrEmpty(Contract) && NoNegotiated != true && Mine != true
         && (Due is null ? 0 : 1) + (Corrected == true ? 1 : 0) + (IsNew == true ? 1 : 0) == 1;
 
     protected override async Task OnParametersSetAsync()
@@ -239,6 +252,7 @@
         now = Clock.GetLocalNow().DateTime;
         heroVideo = Config["Home:HeroVideo"];
         heroPoster = Config["Home:HeroPoster"];
+        bool hasLicenses = (await Company.GetAsync(CancellationToken.None)).HasLicenses;
         var filter = new NoticeFilter
         {
             Keyword = Q,
@@ -250,6 +264,7 @@
             DueWithinDays = Due is >= 0 ? Due : null,
             CorrectedOnly = Corrected == true,
             NewOnly = IsNew == true,
+            MyLicensesOnly = Mine == true && hasLicenses, // 면허를 모두 지웠으면 저장된 조건의 mine은 무시한다
             Page = PageNo ?? 1,
             Sort = CurrentSort switch { "amount" => NoticeSort.AmountHigh, "new" => NoticeSort.Newest, _ => NoticeSort.DueSoon },
         };
@@ -257,5 +272,6 @@
         result = await HomeQueries.SearchAsync(filter, now, CancellationToken.None);
         favIds = await Favorites.FavoriteIdsAsync([.. result.Items.Select(x => x.Id)], CancellationToken.None);
         favCount = await Favorites.CountOpenAsync(now, CancellationToken.None);
+        myEligible = hasLicenses ? (await Company.SummaryAsync(now, CancellationToken.None)).Eligible : null;
     }
 }

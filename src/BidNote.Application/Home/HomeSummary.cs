@@ -47,6 +47,9 @@ public sealed record NoticeFilter
     /// <summary>수의계약(소액 견적 등)을 뺀다.</summary>
     public bool ExcludeNegotiated { get; init; }
     public bool NewOnly { get; init; }
+
+    /// <summary>내 면허로 참여할 수 있는 공고만 (면허 제한 정보가 없는 공고는 뺀다).</summary>
+    public bool MyLicensesOnly { get; init; }
     public NoticeSort Sort { get; init; }
 
     /// <summary>1부터 시작하는 페이지 번호.</summary>

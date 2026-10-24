@@ -121,7 +121,7 @@ public sealed class G2BCollector(G2BApiClient client, ILogger<G2BCollector> logg
             SiteRegionName = site,
             ContractMethod = ContractMethods.Group(Str(item, "cntrctCnclsMthdNm")),
             License = Str(item, "mainCnsttyNm"),
-            Licenses = [.. licenseRows.Select(r => new CollectedLicense(Int(r, "lmtGrpNo"), LicenseName(Str(r, "lcnsLmtNm")))).Where(l => l.Name.Length > 0)],
+            Licenses = [.. licenseRows.Select(MapLicense).Where(l => l.Name.Length > 0)],
             DetailUrl = Str(item, "bidNtceDtlUrl"),
             BasePrice = null, // 기초금액은 별도 API(BsisAmount)로 받는다 (다음 단계)
             LowerLimitRate = double.TryParse(Str(item, "sucsfbidLwltRate"), NumberStyles.Float, CultureInfo.InvariantCulture, out double r) ? r : 0,
@@ -147,6 +147,15 @@ public sealed class G2BCollector(G2BApiClient client, ILogger<G2BCollector> logg
 
     private static DateTime? Date(JsonElement e, string name) =>
         DateTime.TryParseExact(Str(e, name), ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyyMMddHHmm"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
+
+    /// <summary>면허 제한 원문 한 줄. 허용 업종(permsnIndstrytyList)은 "[토목건축공사업/0003]"처럼 대괄호·코드가 붙어 온다.</summary>
+    internal static CollectedLicense MapLicense(JsonElement row) =>
+        new(Int(row, "lmtGrpNo"), LicenseName(Str(row, "lcnsLmtNm")), LicenseList(Str(row, "permsnIndstrytyList")));
+
+    /// <summary>"[A/0003], [B/0004]" 같은 업종 목록을 이름 목록으로 바꾼다.</summary>
+    internal static IReadOnlyList<string> LicenseList(string raw) =>
+        [.. raw.Split([',', '[', ']'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(LicenseName).Where(x => x.Length > 0).Distinct(StringComparer.Ordinal)];
 
     /// <summary>"전기공사업/0037"처럼 붙어 오는 업종 코드를 뗀다.</summary>
     internal static string LicenseName(string raw) => System.Text.RegularExpressions.Regex.Replace(raw, @"/\d+$", "").Trim();

@@ -198,7 +198,12 @@ public sealed class CollectService(
         n.DetailUrl = i.DetailUrl;
         // 면허 제한은 통째로 바꾼다 (원문이 바뀐 경우에만 여기까지 온다).
         n.Licenses.Clear();
-        n.Licenses.AddRange(i.Licenses.Select(l => new NoticeLicense { GroupNo = l.GroupNo, Name = l.Name }));
+        n.Licenses.AddRange(i.Licenses.Select(l => new NoticeLicense
+        {
+            GroupNo = l.GroupNo,
+            Name = l.Name,
+            Alternatives = NoticeLicense.JoinAlternatives(l.Alternatives ?? []),
+        }));
         // 나라장터 공고 목록에는 기초금액이 없다. 따로 받아 채운 기초금액을 정정 공고가 빈 값으로 지우지 않게 한다.
         if (i.BasePrice is not null)
         {

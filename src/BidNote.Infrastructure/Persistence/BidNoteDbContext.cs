@@ -1,4 +1,5 @@
 using BidNote.Domain.Bidding;
+using BidNote.Domain.Company;
 using BidNote.Domain.Favorites;
 using BidNote.Domain.Collecting;
 using BidNote.Domain.Notices;
@@ -22,6 +23,8 @@ public sealed class BidNoteDbContext(DbContextOptions<BidNoteDbContext> options)
     public DbSet<LastSearch> LastSearches => Set<LastSearch>();
     public DbSet<BidResult> BidResults => Set<BidResult>();
     public DbSet<BidResultRank> BidResultRanks => Set<BidResultRank>();
+    public DbSet<CompanyProfile> CompanyProfiles => Set<CompanyProfile>();
+    public DbSet<CompanyLicense> CompanyLicenses => Set<CompanyLicense>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -68,6 +71,19 @@ public sealed class BidNoteDbContext(DbContextOptions<BidNoteDbContext> options)
             e.HasIndex(x => new { x.BidResultId, x.Rank });
             e.Property(x => x.CompanyName).HasMaxLength(BidResultRank.MaxNameLength);
         });
+        modelBuilder.Entity<CompanyProfile>(e =>
+        {
+            e.Property(x => x.Id).ValueGeneratedNever();
+            e.Property(x => x.Name).HasMaxLength(CompanyProfile.MaxNameLength);
+            e.Property(x => x.BizNo).HasMaxLength(CompanyProfile.MaxBizNoLength);
+            e.Property(x => x.Email).HasMaxLength(CompanyProfile.MaxEmailLength);
+        });
+        modelBuilder.Entity<CompanyLicense>(e =>
+        {
+            e.HasIndex(x => x.Name).IsUnique();
+            e.Property(x => x.Name).HasMaxLength(CompanyLicense.MaxNameLength);
+        });
+        modelBuilder.Entity<NoticeLicense>().Ignore(x => x.AlternativeNames);
         modelBuilder.Entity<LastSearch>(e =>
         {
             e.Property(x => x.Id).ValueGeneratedNever();
