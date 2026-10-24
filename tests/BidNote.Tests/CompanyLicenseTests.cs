@@ -146,10 +146,10 @@ public sealed class CompanyStoreTests : IDisposable
         var info = await store.GetAsync(CancellationToken.None);
 
         Assert.Equal(new CompanyInfo("○○건설", "123-45-67890", "대전", "a@b.kr", info.Licenses), info);
-        Assert.Equal(["건축공사업", "토목공사업"], info.Licenses);
+        Assert.Equal(["건축공사업", "토목공사업"], info.LicenseNames);
 
         await store.RemoveLicenseAsync("토목공사업", CancellationToken.None);
-        Assert.Equal(["건축공사업"], (await store.GetAsync(CancellationToken.None)).Licenses);
+        Assert.Equal(["건축공사업"], (await store.GetAsync(CancellationToken.None)).LicenseNames);
     }
 
     [Fact]

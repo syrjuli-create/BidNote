@@ -82,6 +82,7 @@ public sealed class BidNoteDbContext(DbContextOptions<BidNoteDbContext> options)
         {
             e.HasIndex(x => x.Name).IsUnique();
             e.Property(x => x.Name).HasMaxLength(CompanyLicense.MaxNameLength);
+            e.Ignore(x => x.AmountLimit);
         });
         modelBuilder.Entity<NoticeLicense>().Ignore(x => x.AlternativeNames);
         modelBuilder.Entity<LastSearch>(e =>

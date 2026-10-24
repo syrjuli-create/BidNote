@@ -211,6 +211,7 @@ public sealed class CollectService(
             n.AValue = i.AValue;
             n.NetCost = i.NetCost;
         }
+        n.EstimatedPrice = i.EstimatedPrice;
         n.LowerLimitRate = i.LowerLimitRate;
         n.PostedAt = i.PostedAt;
         n.DueAt = i.DueAt;

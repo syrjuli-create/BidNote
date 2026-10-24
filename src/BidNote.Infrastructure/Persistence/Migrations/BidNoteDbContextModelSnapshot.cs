@@ -169,10 +169,19 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("AddedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<long?>("CapacityAmount")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
+
+                    b.Property<long?>("PerformanceAmount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("PerformanceMultiple")
+                        .HasColumnType("REAL");
 
                     b.HasKey("Id");
 
@@ -301,6 +310,9 @@ namespace BidNote.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("DueAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<long?>("EstimatedPrice")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("FirstCollectedAt")
                         .HasColumnType("TEXT");

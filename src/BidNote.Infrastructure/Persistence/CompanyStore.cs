@@ -5,15 +5,17 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BidNote.Infrastructure.Persistence;
 
-/// <summary>회사·면허 정보 저장과 면허로 참여 가능한 공고 판정. 화면 버튼에서 불리므로 호출마다 DB 연결을 새로 연다.</summary>
+/// <summary>회사·면허 정보 저장과 면허·금액으로 참여 가능한 공고 판정. 화면 버튼에서 불리므로 호출마다 DB 연결을 새로 연다.</summary>
 public sealed class CompanyStore(IDbContextFactory<BidNoteDbContext> factory, TimeProvider timeProvider) : ICompanyStore
 {
     public async Task<CompanyInfo> GetAsync(CancellationToken cancellationToken)
     {
         await using var db = await factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var p = await db.CompanyProfiles.AsNoTracking().FirstOrDefaultAsync(x => x.Id == CompanyProfile.SingletonId, cancellationToken).ConfigureAwait(false);
-        var licenses = await LicensesAsync(db, cancellationToken).ConfigureAwait(false);
-        return new CompanyInfo(p?.Name ?? "", p?.BizNo ?? "", p?.Region ?? "", p?.Email ?? "", [.. licenses.Order(StringComparer.CurrentCulture)]);
+        var licenses = await db.CompanyLicenses.AsNoTracking().ToListAsync(cancellationToken).ConfigureAwait(false);
+        return new CompanyInfo(p?.Name ?? "", p?.BizNo ?? "", p?.Region ?? "", p?.Email ?? "",
+            [.. licenses.OrderBy(x => x.Name, StringComparer.CurrentCulture)
+                .Select(x => new CompanyLicenseInfo(x.Name, x.CapacityAmount, x.PerformanceAmount, x.PerformanceMultiple, x.AmountLimit))]);
     }
 
     public async Task SaveProfileAsync(CompanyProfileInput input, CancellationToken cancellationToken)
@@ -52,12 +54,26 @@ public sealed class CompanyStore(IDbContextFactory<BidNoteDbContext> factory, Ti
         await db.CompanyLicenses.Where(x => x.Name == text).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<bool> SaveLicenseAmountsAsync(string name, LicenseAmountsInput input, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        string text = (name ?? "").Trim();
+        await using var db = await factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var row = await db.CompanyLicenses.FirstOrDefaultAsync(x => x.Name == text, cancellationToken).ConfigureAwait(false);
+        if (row is null) return false;
+        row.CapacityAmount = input.CapacityAmount is > 0 ? input.CapacityAmount : null;
+        row.PerformanceAmount = input.PerformanceAmount is > 0 ? input.PerformanceAmount : null;
+        row.PerformanceMultiple = input.PerformanceMultiple is > 0 ? input.PerformanceMultiple : null;
+        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
     public async Task<IReadOnlyList<LicenseOption>> LicenseOptionsAsync(DateTime now, CancellationToken cancellationToken)
     {
         await using var db = await factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var rows = await OpenLicenseRowsAsync(db, now, cancellationToken).ConfigureAwait(false);
         return [.. rows
-            .SelectMany(r => r.Alternatives.Prepend(r.Name).Select(name => (r.NoticeId, Name: name)))
+            .SelectMany(r => r.Row.Alternatives.Prepend(r.Row.Name).Select(name => (r.NoticeId, Name: name)))
             .Distinct()
             .GroupBy(x => x.Name, StringComparer.Ordinal)
             .Select(g => new LicenseOption(g.Key, g.Count()))
@@ -71,14 +87,14 @@ public sealed class CompanyStore(IDbContextFactory<BidNoteDbContext> factory, Ti
         if (mine.Count == 0) return new EligibilitySummary(0, 0, 0);
 
         int open = await Open(db, now).CountAsync(cancellationToken).ConfigureAwait(false);
-        var rows = await OpenLicenseRowsAsync(db, now, cancellationToken).ConfigureAwait(false);
-        int eligible = 0, notEligible = 0;
-        foreach (var notice in rows.GroupBy(r => r.NoticeId))
+        int eligible = 0, notEligible = 0, overLimit = 0;
+        foreach (var e in await CheckOpenAsync(db, now, mine, cancellationToken).ConfigureAwait(false))
         {
-            if (LicenseEligibility.Check(notice.Select(r => r.Row), mine).Kind == EligibilityKind.Eligible) eligible++;
+            if (e.Result.CanBid) eligible++;
+            else if (e.Result.Kind == EligibilityKind.Eligible) overLimit++;
             else notEligible++;
         }
-        return new EligibilitySummary(eligible, notEligible, open - eligible - notEligible);
+        return new EligibilitySummary(eligible, notEligible, open - eligible - notEligible - overLimit, overLimit);
     }
 
     public async Task<Eligibility?> CheckAsync(int noticeId, CancellationToken cancellationToken)
@@ -86,44 +102,48 @@ public sealed class CompanyStore(IDbContextFactory<BidNoteDbContext> factory, Ti
         await using var db = await factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var mine = await LicensesAsync(db, cancellationToken).ConfigureAwait(false);
         if (mine.Count == 0) return null;
+        long? estimated = await db.Notices.AsNoTracking().Where(n => n.Id == noticeId).Select(n => n.EstimatedPrice)
+            .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
         var rows = await db.NoticeLicenses.AsNoTracking().Where(l => l.NoticeId == noticeId)
             .Select(l => new { l.GroupNo, l.Name, l.Alternatives })
             .ToListAsync(cancellationToken).ConfigureAwait(false);
-        return LicenseEligibility.Check(rows.Select(r => new LicenseRow(r.GroupNo, r.Name, NoticeLicense.SplitAlternatives(r.Alternatives))), mine);
+        return LicenseEligibility.Check(rows.Select(r => new LicenseRow(r.GroupNo, r.Name, NoticeLicense.SplitAlternatives(r.Alternatives))), mine, estimated);
     }
 
-    /// <summary>진행 중 공고 중 내 면허로 참여 가능한 공고 번호. 목록 필터에서도 쓴다.</summary>
+    /// <summary>진행 중 공고 중 내 면허로 참여 가능하고 금액 상한도 넘지 않는 공고 번호. 목록 필터에서도 쓴다.</summary>
     internal static async Task<IReadOnlyList<int>> EligibleOpenNoticeIdsAsync(BidNoteDbContext db, DateTime now, CancellationToken cancellationToken)
     {
         var mine = await LicensesAsync(db, cancellationToken).ConfigureAwait(false);
         if (mine.Count == 0) return [];
-        var rows = await OpenLicenseRowsAsync(db, now, cancellationToken).ConfigureAwait(false);
-        return [.. rows.GroupBy(r => r.NoticeId)
-            .Where(g => LicenseEligibility.Check(g.Select(r => r.Row), mine).Kind == EligibilityKind.Eligible)
-            .Select(g => g.Key)];
+        return [.. (await CheckOpenAsync(db, now, mine, cancellationToken).ConfigureAwait(false)).Where(x => x.Result.CanBid).Select(x => x.NoticeId)];
     }
 
-    private sealed record OpenRow(int NoticeId, LicenseRow Row)
-    {
-        public string Name => Row.Name;
-        public IReadOnlyList<string> Alternatives => Row.Alternatives;
-    }
+    private sealed record OpenRow(int NoticeId, long? EstimatedPrice, LicenseRow Row);
 
     private static IQueryable<Notice> Open(BidNoteDbContext db, DateTime now) =>
         db.Notices.AsNoTracking().Where(x => x.IsActive && x.DueAt > now);
 
-    private static async Task<List<OpenRow>> OpenLicenseRowsAsync(BidNoteDbContext db, DateTime now, CancellationToken cancellationToken)
+    /// <summary>면허 제한이 있는 진행 공고마다 판정한다 (면허 제한이 없는 공고는 빠진다).</summary>
+    private static async Task<List<(int NoticeId, Eligibility Result)>> CheckOpenAsync(BidNoteDbContext db, DateTime now,
+        IReadOnlyDictionary<string, long?> mine, CancellationToken cancellationToken)
     {
-        var open = Open(db, now);
-        var rows = await db.NoticeLicenses.AsNoTracking().Where(l => open.Any(n => n.Id == l.NoticeId))
-            .Select(l => new { l.NoticeId, l.GroupNo, l.Name, l.Alternatives })
-            .ToListAsync(cancellationToken).ConfigureAwait(false);
-        return [.. rows.Select(r => new OpenRow(r.NoticeId, new LicenseRow(r.GroupNo, r.Name, NoticeLicense.SplitAlternatives(r.Alternatives))))];
+        var rows = await OpenLicenseRowsAsync(db, now, cancellationToken).ConfigureAwait(false);
+        return [.. rows.GroupBy(r => r.NoticeId)
+            .Select(g => (g.Key, LicenseEligibility.Check(g.Select(r => r.Row), mine, g.First().EstimatedPrice)))];
     }
 
-    private static async Task<HashSet<string>> LicensesAsync(BidNoteDbContext db, CancellationToken cancellationToken) =>
-        (await db.CompanyLicenses.AsNoTracking().Select(x => x.Name).ToListAsync(cancellationToken).ConfigureAwait(false))
-            .ToHashSet(StringComparer.Ordinal);
+    private static async Task<List<OpenRow>> OpenLicenseRowsAsync(BidNoteDbContext db, DateTime now, CancellationToken cancellationToken)
+    {
+        var rows = await db.NoticeLicenses.AsNoTracking().Where(l => l.Notice!.IsActive && l.Notice.DueAt > now)
+            .Select(l => new { l.NoticeId, l.Notice!.EstimatedPrice, l.GroupNo, l.Name, l.Alternatives })
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        return [.. rows.Select(r => new OpenRow(r.NoticeId, r.EstimatedPrice, new LicenseRow(r.GroupNo, r.Name, NoticeLicense.SplitAlternatives(r.Alternatives))))];
+    }
+
+    /// <summary>내 면허 이름 → 금액 상한(모르면 null).</summary>
+    private static async Task<Dictionary<string, long?>> LicensesAsync(BidNoteDbContext db, CancellationToken cancellationToken) =>
+        (await db.CompanyLicenses.AsNoTracking().ToListAsync(cancellationToken).ConfigureAwait(false))
+            .ToDictionary(x => x.Name, x => x.AmountLimit, StringComparer.Ordinal);
 
     private static string Cut(string? s, int max)
     {
