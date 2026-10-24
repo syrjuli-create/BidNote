@@ -2,6 +2,8 @@ using BidNote.Domain.Bidding;
 using BidNote.Domain.Favorites;
 using BidNote.Domain.Collecting;
 using BidNote.Domain.Notices;
+using BidNote.Domain.Results;
+using BidNote.Domain.Searching;
 using Microsoft.EntityFrameworkCore;
 
 namespace BidNote.Infrastructure.Persistence;
@@ -16,6 +18,10 @@ public sealed class BidNoteDbContext(DbContextOptions<BidNoteDbContext> options)
     public DbSet<CollectorSetting> CollectorSettings => Set<CollectorSetting>();
     public DbSet<FavoriteNotice> FavoriteNotices => Set<FavoriteNotice>();
     public DbSet<MyBid> MyBids => Set<MyBid>();
+    public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
+    public DbSet<LastSearch> LastSearches => Set<LastSearch>();
+    public DbSet<BidResult> BidResults => Set<BidResult>();
+    public DbSet<BidResultRank> BidResultRanks => Set<BidResultRank>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -43,6 +49,30 @@ public sealed class BidNoteDbContext(DbContextOptions<BidNoteDbContext> options)
             e.HasIndex(x => x.CollectedAt);
         });
         modelBuilder.Entity<CollectorSetting>(e => e.Property(x => x.Id).ValueGeneratedNever());
+        modelBuilder.Entity<SavedSearch>(e =>
+        {
+            e.HasIndex(x => x.Name).IsUnique();
+            e.Property(x => x.Name).HasMaxLength(SavedSearch.MaxNameLength);
+            e.Property(x => x.Query).HasMaxLength(SavedSearch.MaxQueryLength);
+        });
+        modelBuilder.Entity<BidResult>(e =>
+        {
+            e.HasIndex(x => x.NoticeId).IsUnique();
+            e.Property(x => x.WinnerName).HasMaxLength(BidResultRank.MaxNameLength);
+            e.HasOne(x => x.Notice).WithMany().HasForeignKey(x => x.NoticeId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Ranks).WithOne().HasForeignKey(x => x.BidResultId).OnDelete(DeleteBehavior.Cascade);
+            e.Ignore(x => x.IsOpened);
+        });
+        modelBuilder.Entity<BidResultRank>(e =>
+        {
+            e.HasIndex(x => new { x.BidResultId, x.Rank });
+            e.Property(x => x.CompanyName).HasMaxLength(BidResultRank.MaxNameLength);
+        });
+        modelBuilder.Entity<LastSearch>(e =>
+        {
+            e.Property(x => x.Id).ValueGeneratedNever();
+            e.Property(x => x.Query).HasMaxLength(SavedSearch.MaxQueryLength);
+        });
         modelBuilder.Entity<FavoriteNotice>(e =>
         {
             e.HasIndex(x => x.NoticeId).IsUnique();

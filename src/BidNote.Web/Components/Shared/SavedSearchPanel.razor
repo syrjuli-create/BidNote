@@ -1,0 +1,81 @@
+@using BidNote.Application.Home
+@using BidNote.Domain.Searching
+@inject ISavedSearchStore Store
+
+@* 메인 화면 필터 안에 있다. 입력칸은 바깥 검색 폼에 속하지 않게 form을 없는 id로 돌려 둔다(Enter로 검색이 제출되지 않게). *@
+<fieldset class="savedsearch">
+    <legend>저장한 검색 조건</legend>
+    @if (items.Count == 0)
+    {
+        <p class="tsub">아직 없습니다. 필터를 고른 뒤 이름을 붙여 저장하세요.</p>
+    }
+    else
+    {
+        <ul>
+            @foreach (var s in items)
+            {
+                <li class="@(s.Query == Query ? "on" : "")">
+                    <a href="/?@s.Query">@s.Name</a>
+                    <span class="tsub">@string.Join(" · ", SearchQuery.Describe(s.Query))</span>
+                    <button type="button" class="x" aria-label="@(s.Name) 지우기" disabled="@busy" @onclick="() => DeleteAsync(s.Id)">×</button>
+                </li>
+            }
+        </ul>
+    }
+    @if (Query.Length > 0)
+    {
+        <div class="row">
+            <input class="in" type="text" form="savedsearch-none" maxlength="@SavedSearch.MaxNameLength" placeholder="이름 (예: 경기 포장 1억 미만)"
+                   aria-label="저장할 검색 조건 이름" @bind="name" @bind:event="oninput" @onkeyup="OnKeyUpAsync" />
+            <button type="button" class="btn line" disabled="@(busy || name.Trim().Length == 0)" @onclick="SaveAsync">저장</button>
+        </div>
+    }
+    @if (status.Length > 0) { <p class="tsub" role="status">@status</p> }
+</fieldset>
+
+@code {
+    /// <summary>지금 화면의 검색 조건(SearchQuery.Normalize 한 값).</summary>
+    [Parameter, EditorRequired] public string Query { get; set; } = "";
+
+    private IReadOnlyList<SavedSearchItem> items = [];
+    private string name = "", status = "";
+    private bool busy;
+
+    protected override async Task OnInitializedAsync() => items = await Store.ListAsync(CancellationToken.None);
+
+    private async Task OnKeyUpAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !busy && name.Trim().Length > 0) await SaveAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        busy = true;
+        try
+        {
+            var saved = await Store.SaveAsync(name, Query, CancellationToken.None);
+            bool replaced = items.Any(x => x.Name == saved.Name);
+            items = await Store.ListAsync(CancellationToken.None);
+            status = replaced ? $"'{saved.Name}' 조건을 지금 조건으로 바꿨습니다." : $"'{saved.Name}'(으)로 저장했습니다.";
+            name = "";
+        }
+        catch (ArgumentException ex)
+        {
+            status = ex.Message.Split(" (", 2)[0];
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        busy = true;
+        string? removed = items.FirstOrDefault(x => x.Id == id)?.Name;
+        await Store.DeleteAsync(id, CancellationToken.None);
+        items = await Store.ListAsync(CancellationToken.None);
+        status = removed is null ? "" : $"'{removed}'을(를) 지웠습니다.";
+        busy = false;
+    }
+}

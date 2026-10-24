@@ -18,40 +18,114 @@
     {
         <div class="empty">불러오는 중입니다.</div>
     }
-    else if (list.Open.Count == 0 && list.Closed.Count == 0)
+    else if (list.Open.Count == 0 && list.Closed.Count == 0 && list.Trash.Count == 0)
     {
         <div class="empty">아직 담은 공고가 없습니다. 공고 목록이나 상세 화면에서 ★를 눌러 담아 보세요. <a href="/">공고 찾기</a></div>
     }
     else
     {
-        @if (list.Open.Count == 0)
+        <div class="row foldertabs" role="tablist" aria-label="관심 공고 폴더">
+            <button type="button" class="pill @(view == All ? "on" : "")" @onclick="() => Show(All)">전체 @(Count(null))</button>
+            @foreach (var folder in Folders)
+            {
+                <button type="button" class="pill @(view == FolderKey(folder) ? "on" : "")" @onclick="() => Show(folder)">@FolderName(folder) @(Count(folder))</button>
+            }
+            <button type="button" class="pill @(view == Trash ? "on" : "")" @onclick="() => Show(Trash)">휴지통 @(list.Trash.Count)</button>
+        </div>
+
+        @if (view == Trash)
         {
-            <div class="empty">진행 중인 관심 공고가 없습니다.</div>
+            @if (list.Trash.Count == 0)
+            {
+                <div class="empty">휴지통이 비어 있습니다.</div>
+            }
+            else
+            {
+                <div class="row actions">
+                    @if (confirmEmpty)
+                    {
+                        <span class="tsub">휴지통의 @(list.Trash.Count)건을 완전히 지웁니다. 되돌릴 수 없습니다.</span>
+                        <button type="button" class="pill danger" @onclick="EmptyTrashAsync">비우기</button>
+                        <button type="button" class="pill" @onclick="() => confirmEmpty = false">취소</button>
+                    }
+                    else
+                    {
+                        <button type="button" class="pill danger" @onclick="() => confirmEmpty = true">휴지통 비우기</button>
+                    }
+                </div>
+                <div class="favlist">
+                    @foreach (var f in list.Trash) { @TrashCard(f) }
+                </div>
+            }
         }
         else
         {
-            <div class="favlist">
-                @foreach (var f in list.Open) { @Card(f, false) }
-            </div>
-        }
-
-        @if (list.Closed.Count > 0)
-        {
-            <details class="closed">
-                <summary>마감·취소된 관심 공고 @(list.Closed.Count)건</summary>
+            var open = InView(list.Open);
+            var closed = InView(list.Closed);
+            @if (open.Count == 0 && closed.Count == 0)
+            {
+                <div class="empty">이 폴더에 담긴 공고가 없습니다.</div>
+            }
+            @if (open.Count > 0)
+            {
                 <div class="favlist">
-                    @foreach (var f in list.Closed) { @Card(f, true) }
+                    @foreach (var f in open) { @Card(f, false) }
                 </div>
-            </details>
+            }
+            @if (closed.Count > 0)
+            {
+                <details class="closed">
+                    <summary>마감·취소된 관심 공고 @(closed.Count)건</summary>
+                    <div class="favlist">
+                        @foreach (var f in closed) { @Card(f, true) }
+                    </div>
+                </details>
+            }
         }
     }
 </div>
 
 @code {
+    private const string All = "all";
+    private const string Trash = "trash";
+
+    private static readonly FavoriteFolder[] Folders = [FavoriteFolder.Reviewing, FavoriteFolder.Planned, FavoriteFolder.Submitted];
+
     private FavoriteList? list;
     private DateTime now;
+    private string view = All;
     private int? editing;
     private string draft = "";
+    private bool confirmEmpty;
+
+    private static string FolderName(FavoriteFolder folder) => folder switch
+    {
+        FavoriteFolder.Reviewing => "검토 중",
+        FavoriteFolder.Planned => "투찰 예정",
+        FavoriteFolder.Submitted => "투찰 완료",
+        _ => "기타",
+    };
+
+    private string FolderKey(FavoriteFolder folder) => ((int)folder).ToString();
+
+    private bool IsFolderView(out FavoriteFolder folder)
+    {
+        folder = FavoriteFolder.Reviewing;
+        return view != All && view != Trash && Enum.TryParse(view, out folder) && Enum.IsDefined(folder);
+    }
+
+    private IReadOnlyList<FavoriteItem> InView(IReadOnlyList<FavoriteItem> items) =>
+        IsFolderView(out var folder) ? [.. items.Where(x => x.Folder == folder)] : items;
+
+    private int Count(FavoriteFolder? folder) =>
+        list is null ? 0 : list.Open.Concat(list.Closed).Count(x => folder is null || x.Folder == folder);
+
+    private void Show(object target)
+    {
+        view = target is FavoriteFolder folder ? FolderKey(folder) : (string)target;
+        editing = null;
+        confirmEmpty = false;
+    }
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -68,6 +142,7 @@
                 <span class="dday @(closed ? "" : Display.DDayLevel(f.DueAt, now))">@(closed ? (f.IsActive ? "마감" : "취소") : Display.DDay(f.DueAt, now))</span>
                 <div class="grow">
                     <a class="tname" href="/notices/@f.NoticeId">@f.Name</a>
+                    <span class="chip">@FolderName(f.Folder)</span>
                     @if (f.CorrectionCount > 0) { <span class="chip warn">정정 @(f.CorrectionCount)차</span> }
                     <span class="tsub">@f.Agency · @f.Region @f.License · 마감 @Display.DateTimeText(f.DueAt)</span>
                 </div>
@@ -86,12 +161,35 @@
             {
                 <p class="memo-view @(f.Memo.Length == 0 ? "none" : "")">@(f.Memo.Length == 0 ? "메모 없음" : f.Memo)</p>
                 <div class="row actions">
+                    @foreach (var folder in Folders.Where(x => x != f.Folder))
+                    {
+                        <button type="button" class="pill" @onclick="() => MoveAsync(f.NoticeId, folder)">→ @FolderName(folder)</button>
+                    }
                     <button type="button" class="pill" @onclick="() => { editing = f.NoticeId; draft = f.Memo; }">메모</button>
                     @if (!closed) { <a class="pill" href="/tools/calc?notice=@f.NoticeId">투찰금액 계산</a> }
                     <a class="pill" href="/notices/@f.NoticeId">상세</a>
-                    <button type="button" class="pill danger" @onclick="() => RemoveAsync(f.NoticeId)">빼기</button>
+                    <button type="button" class="pill danger" @onclick="() => TrashAsync(f.NoticeId)">휴지통</button>
                 </div>
             }
+        </article>
+    };
+
+    private RenderFragment TrashCard(FavoriteItem f) => __builder =>
+    {
+        <article class="panel favcard past">
+            <div class="favtop">
+                <div class="grow">
+                    <a class="tname" href="/notices/@f.NoticeId">@f.Name</a>
+                    <span class="chip">@FolderName(f.Folder)</span>
+                    <span class="tsub">@f.Agency · @f.Region @f.License · 휴지통 @(f.TrashedAt is { } t ? Display.DateTimeText(t) : "")</span>
+                </div>
+                <div class="favprice num">@Display.Eok(f.BasePrice)</div>
+            </div>
+            @if (f.Memo.Length > 0) { <p class="memo-view">@f.Memo</p> }
+            <div class="row actions">
+                <button type="button" class="pill" @onclick="() => RestoreAsync(f.NoticeId)">복원</button>
+                <button type="button" class="pill danger" @onclick="() => DeleteForeverAsync(f.NoticeId)">완전 삭제</button>
+            </div>
         </article>
     };
 
@@ -102,9 +200,34 @@
         await LoadAsync();
     }
 
-    private async Task RemoveAsync(int noticeId)
+    private async Task MoveAsync(int noticeId, FavoriteFolder folder)
     {
-        await Store.RemoveAsync(noticeId, CancellationToken.None);
+        await Store.MoveToFolderAsync(noticeId, folder, CancellationToken.None);
+        await LoadAsync();
+    }
+
+    private async Task TrashAsync(int noticeId)
+    {
+        await Store.TrashAsync(noticeId, CancellationToken.None);
+        await LoadAsync();
+    }
+
+    private async Task RestoreAsync(int noticeId)
+    {
+        await Store.RestoreAsync(noticeId, CancellationToken.None);
+        await LoadAsync();
+    }
+
+    private async Task DeleteForeverAsync(int noticeId)
+    {
+        await Store.DeleteForeverAsync(noticeId, CancellationToken.None);
+        await LoadAsync();
+    }
+
+    private async Task EmptyTrashAsync()
+    {
+        await Store.EmptyTrashAsync(CancellationToken.None);
+        confirmEmpty = false;
         await LoadAsync();
     }
 }

@@ -22,6 +22,8 @@ public static class DependencyInjection
         services.AddScoped(sp => sp.GetRequiredService<IDbContextFactory<BidNoteDbContext>>().CreateDbContext());
         services.AddScoped<BidNote.Application.Favorites.IFavoriteStore, FavoriteStore>();
         services.AddScoped<BidNote.Application.Bidding.IMyBidStore, MyBidStore>();
+        services.AddScoped<ISavedSearchStore, SavedSearchStore>();
+        services.AddScoped<BidNote.Application.Results.IBidResultService, BidResultService>();
         services.AddSingleton(new StorageLocation(dbPath));
         services.AddScoped<ICollectStatsQueries, CollectStatsQueries>();
         services.AddScoped<BidNote.Application.Notices.INoticeDetailQueries, NoticeDetailQueries>();
@@ -40,6 +42,7 @@ public static class DependencyInjection
         if (g2b.UseFakeData)
         {
             services.AddScoped<IBidCollector, FakeG2BCollector>();
+            services.AddScoped<BidNote.Application.Results.IBidResultSource, FakeResultSource>();
         }
         else
         {
@@ -51,6 +54,7 @@ public static class DependencyInjection
                 c.Timeout = TimeSpan.FromSeconds(60);
             });
             services.AddScoped<IBidCollector, G2BCollector>();
+            services.AddScoped<BidNote.Application.Results.IBidResultSource, G2BResultSource>();
         }
 
         return services;

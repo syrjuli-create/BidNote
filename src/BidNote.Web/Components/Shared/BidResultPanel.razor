@@ -1,0 +1,134 @@
+@using System.Globalization
+@using BidNote.Application.Results
+@using BidNote.Domain.Results
+@inject IBidResultService Results
+@inject TimeProvider Clock
+
+<section class="panel bidresult" id="result">
+    <h2 class="sub">개찰 결과</h2>
+    @if (view is null)
+    {
+        <p class="tsub">@(OpenAt > now ? $"개찰 전입니다 (개찰 {Display.DateTimeText(OpenAt)})." : "개찰 결과를 아직 받지 못했습니다. 수집할 때마다 나라장터 개찰 결과를 확인합니다.")</p>
+    }
+    else
+    {
+        <dl class="kv">
+            <div><dt>진행 상태</dt><dd>@Or(view.Status)</dd></div>
+            <div><dt>참가 업체</dt><dd class="num">@view.ParticipantCount.ToString("N0", CultureInfo.InvariantCulture)곳</dd></div>
+            <div><dt>개찰 일시</dt><dd class="num">@(view.OpenedAt is { } o ? Display.DateTimeText(o) : "-")</dd></div>
+            <div><dt>예정가격</dt><dd class="num">@(view.PlannedPrice is { } p ? Display.Won(p) + "원" : "-")</dd></div>
+            <div class="big"><dt>실제 사정률</dt><dd class="num">@Rate(view.ActualRate)</dd></div>
+            <div><dt>낙찰하한 금액</dt><dd class="num">@(view.LowerLimitAmount is { } f ? Display.Won(f) + "원" : "-")</dd></div>
+        </dl>
+
+        @if (view.Winner is { } w)
+        {
+            <p class="winner">1순위 <b>@w.CompanyName</b> · <span class="num">@(w.Amount is { } a ? Display.Won(a) + "원" : "-")</span> · 투찰률 <span class="num">@Pct(w.BidRate)</span> · 사정률 <b class="num">@Rate(w.AssessmentRate)</b></p>
+        }
+
+        @if (view.Mine is { } m)
+        {
+            <div class="mine">
+                <b>내 투찰</b>
+                <span>@RankText(m.Rank)</span>
+                @if (m.RateGap is { } gap)
+                {
+                    <span class="tsub" style="display:inline">1순위와 사정률 차이 <b class="num">@gap.ToString("+0.0000;-0.0000;0", CultureInfo.InvariantCulture)%p</b></span>
+                }
+            </div>
+        }
+
+        @if (loading)
+        {
+            <p class="tsub">업체별 순위를 받는 중입니다…</p>
+        }
+        else if (view.Top.Count > 0)
+        {
+            <div class="tbl">
+                <table>
+                    <thead><tr><th class="r">순위</th><th>업체</th><th class="r">투찰금액</th><th class="r">투찰률</th><th class="r">사정률</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in view.Top)
+                        {
+                            <tr>
+                                <td class="r num">@r.Rank</td>
+                                <td>@r.CompanyName</td>
+                                <td class="r num">@(r.Amount is { } a ? Display.Won(a) : "-")</td>
+                                <td class="r num">@Pct(r.BidRate)</td>
+                                <td class="r num">@Rate(r.AssessmentRate)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="tsub">
+                순위 있는 업체 @view.RankedCount.ToString("N0", CultureInfo.InvariantCulture)곳 중 앞 @(view.Top.Count)곳 · 하한 미달·예가 초과 등 @((view.TotalCount - view.RankedCount).ToString("N0", CultureInfo.InvariantCulture))곳
+                @if (!view.RanksComplete) { <span> · 호출 한도로 일부만 받았습니다</span> }
+                · 받은 시각 @(view.RanksFetchedAt is { } t ? Display.DateTimeText(t) : "-")
+                <button type="button" class="pill" disabled="@loading" @onclick="RefreshAsync">다시 받기</button>
+            </p>
+        }
+        else if (view.NeedsRanks)
+        {
+            <p class="tsub">업체별 순위를 받지 못했습니다. <button type="button" class="pill" @onclick="RefreshAsync">순위 받기</button> <span>@error</span></p>
+        }
+        <p class="tsub">사정률은 투찰금액을 기초금액·A값·낙찰하한율로 거꾸로 계산한 값입니다. 실제 사정률 = 예정가격 ÷ 기초금액.</p>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public int NoticeId { get; set; }
+    [Parameter, EditorRequired] public DateTime OpenAt { get; set; }
+
+    private const int Top = 10;
+
+    private BidResultView? view;
+    private DateTime now;
+    private bool loading;
+    private string error = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        now = Clock.GetLocalNow().DateTime;
+        view = await Results.GetAsync(NoticeId, Top, CancellationToken.None);
+        loading = view?.NeedsRanks == true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // 개찰이 끝났는데 순위가 없으면 화면을 연 김에 한 번 받아 온다 (공고마다 따로 호출해야 해서 미리 다 받지 않는다).
+        if (firstRender && loading) await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        loading = true;
+        error = "";
+        StateHasChanged();
+        try
+        {
+            if (!await Results.FetchRanksAsync(NoticeId, CancellationToken.None)) error = "나라장터에 순위 정보가 없습니다.";
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            error = "순위를 받지 못했습니다: " + ex.Message;
+        }
+        view = await Results.GetAsync(NoticeId, Top, CancellationToken.None);
+        loading = false;
+        StateHasChanged();
+    }
+
+    private static string Or(string s) => string.IsNullOrWhiteSpace(s) ? "-" : s;
+
+    private static string Rate(double? r) => r is { } v ? v.ToString("0.0000", CultureInfo.InvariantCulture) + "%" : "-";
+
+    private static string Pct(double? r) => r is { } v ? v.ToString("0.###", CultureInfo.InvariantCulture) + "%" : "-";
+
+    public static string RankText(MyRank rank) => rank.Kind switch
+    {
+        MyRankKind.Ranked => $"{rank.Rank:N0}순위 (추정)",
+        MyRankKind.BelowFloor => "낙찰하한 미달",
+        MyRankKind.OverPlanned => "예정가격 초과",
+        _ => "순위 모름 (업체별 순위를 받으면 계산)",
+    };
+}
