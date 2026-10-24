@@ -26,6 +26,17 @@ public class CompanyLicense
     public int Id { get; set; }
     public string Name { get; set; } = "";
     public DateTime AddedAt { get; set; }
+
+    /// <summary>이 업종의 시공능력평가액(원). 비우면 따지지 않는다.</summary>
+    public long? CapacityAmount { get; set; }
+
+    /// <summary>이 업종의 최근 실적 합계(원). 실적 배수와 함께 있어야 상한을 계산한다.</summary>
+    public long? PerformanceAmount { get; set; }
+
+    /// <summary>실적 배수 (추정가격의 몇 배 실적이 있어야 하는지). 발주처·금액대마다 달라 직접 넣는다.</summary>
+    public double? PerformanceMultiple { get; set; }
+
+    public long? AmountLimit => LicenseEligibility.AmountLimit(CapacityAmount, PerformanceAmount, PerformanceMultiple);
 }
 
 /// <summary>면허 제한 한 줄: 이 면허 또는 대체 인정 업종 중 하나가 있으면 충족한다.</summary>
@@ -39,9 +50,24 @@ public enum EligibilityKind
     NotEligible,
 }
 
+/// <summary>면허는 맞는 공고의 금액 판정.</summary>
+public enum AmountVerdict
+{
+    /// <summary>상한이나 추정가격을 몰라 판정하지 않았다.</summary>
+    Unknown,
+    Within,
+    Over,
+}
+
 /// <param name="GroupNo">충족한 그룹, 또는 가장 가까운(빠진 면허가 가장 적은) 그룹.</param>
 /// <param name="Missing">그 그룹에서 빠진 면허. 참여 가능이면 비어 있다.</param>
-public sealed record Eligibility(EligibilityKind Kind, int? GroupNo, IReadOnlyList<string> Missing);
+/// <param name="AmountLimit">충족한 그룹에 쓴 내 면허들의 금액 상한(가장 작은 값). 모르면 null.</param>
+public sealed record Eligibility(EligibilityKind Kind, int? GroupNo, IReadOnlyList<string> Missing,
+    long? AmountLimit = null, AmountVerdict Amount = AmountVerdict.Unknown)
+{
+    /// <summary>면허가 맞고 금액 상한도 넘지 않는다 (상한을 모르면 면허만 본다).</summary>
+    public bool CanBid => Kind == EligibilityKind.Eligible && Amount != AmountVerdict.Over;
+}
 
 /// <summary>
 /// 면허로 참여할 수 있는지 판정한다. 그룹 하나의 모든 줄을 충족하면 참여 가능 (그룹끼리는 "또는", 그룹 안은 "그리고").
@@ -49,22 +75,77 @@ public sealed record Eligibility(EligibilityKind Kind, int? GroupNo, IReadOnlyLi
 /// </summary>
 public static class LicenseEligibility
 {
+    /// <summary>면허만 본다 (금액 상한 없음).</summary>
     public static Eligibility Check(IEnumerable<LicenseRow> rows, IReadOnlySet<string> myLicenses)
+    {
+        ArgumentNullException.ThrowIfNull(myLicenses);
+        return Check(rows, myLicenses.ToDictionary(x => x, _ => (long?)null, StringComparer.Ordinal), null);
+    }
+
+    /// <summary>
+    /// 면허와 금액을 함께 본다. <paramref name="myLicenses"/>는 면허 이름 → 금액 상한(모르면 null).
+    /// 그룹 하나를 충족하면 면허는 맞고, 그 그룹의 각 줄에 쓴 내 면허 상한 중 가장 작은 값이 그 그룹의 상한이다
+    /// (한 줄을 여러 면허로 충족하면 그중 큰 상한). 충족한 그룹이 여럿이면 상한이 가장 큰 그룹을 쓴다.
+    /// 추정가격이 그 상한을 넘으면 금액 초과. 상한이나 추정가격을 모르면 금액은 판정하지 않는다.
+    /// </summary>
+    public static Eligibility Check(IEnumerable<LicenseRow> rows, IReadOnlyDictionary<string, long?> myLicenses, long? estimatedPrice)
     {
         ArgumentNullException.ThrowIfNull(rows);
         ArgumentNullException.ThrowIfNull(myLicenses);
         var groups = rows.Where(r => r.Name.Length > 0).GroupBy(r => r.GroupNo).OrderBy(g => g.Key).ToList();
         if (groups.Count == 0) return new Eligibility(EligibilityKind.Unknown, null, []);
 
-        var best = groups
-            .Select(g => (Group: g.Key, Missing: g.Where(r => !Satisfied(r, myLicenses)).Select(r => r.Name).ToList()))
-            .OrderBy(x => x.Missing.Count).ThenBy(x => x.Group)
-            .First();
-        return best.Missing.Count == 0
-            ? new Eligibility(EligibilityKind.Eligible, best.Group, [])
-            : new Eligibility(EligibilityKind.NotEligible, best.Group, best.Missing);
+        var evaluated = groups
+            .Select(g => (Group: g.Key, Missing: g.Where(r => Matches(r, myLicenses).Count == 0).Select(r => r.Name).ToList(), Rows: g.ToList()))
+            .ToList();
+        var satisfied = evaluated.Where(x => x.Missing.Count == 0).ToList();
+        if (satisfied.Count == 0)
+        {
+            var nearest = evaluated.OrderBy(x => x.Missing.Count).ThenBy(x => x.Group).First();
+            return new Eligibility(EligibilityKind.NotEligible, nearest.Group, nearest.Missing);
+        }
+
+        // 상한을 아는 그룹 중 가장 넉넉한 그룹. 상한을 모르는 그룹이 있으면 그 그룹으로는 금액을 못 따지므로 판정하지 않는다.
+        var limits = satisfied.Select(x => (x.Group, Limit: GroupLimit(x.Rows, myLicenses))).ToList();
+        if (limits.Any(x => x.Limit is null))
+            return new Eligibility(EligibilityKind.Eligible, limits.First(x => x.Limit is null).Group, []);
+        var best = limits.OrderByDescending(x => x.Limit).ThenBy(x => x.Group).First();
+        var verdict = estimatedPrice is not > 0 ? AmountVerdict.Unknown
+            : estimatedPrice <= best.Limit ? AmountVerdict.Within
+            : AmountVerdict.Over;
+        return new Eligibility(EligibilityKind.Eligible, best.Group, [], best.Limit, verdict);
     }
 
-    private static bool Satisfied(LicenseRow row, IReadOnlySet<string> mine) =>
-        mine.Contains(row.Name) || row.Alternatives.Any(mine.Contains);
+    /// <summary>
+    /// 면허 하나의 금액 상한: 시공능력평가액과 "실적 ÷ 실적 배수" 중 작은 값. 넣은 값만으로 계산하고, 하나도 없으면 null.
+    /// </summary>
+    public static long? AmountLimit(long? capacityAmount, long? performanceAmount, double? performanceMultiple)
+    {
+        long? byCapacity = capacityAmount is > 0 ? capacityAmount : null;
+        long? byPerformance = performanceAmount is > 0 && performanceMultiple is > 0
+            ? (long)Math.Floor(performanceAmount.Value / performanceMultiple.Value)
+            : null;
+        return (byCapacity, byPerformance) switch
+        {
+            ({ } c, { } p) => Math.Min(c, p),
+            ({ } c, null) => c,
+            (null, { } p) => p,
+            _ => null,
+        };
+    }
+
+    private static long? GroupLimit(IEnumerable<LicenseRow> rows, IReadOnlyDictionary<string, long?> mine)
+    {
+        long? limit = long.MaxValue;
+        foreach (var row in rows)
+        {
+            var known = Matches(row, mine).Select(name => mine[name]).ToList();
+            if (known.Any(x => x is null)) return null; // 이 줄에 쓸 수 있는 면허 중 상한을 모르는 게 있으면 금액을 따지지 않는다
+            limit = Math.Min(limit.Value, known.Max(x => x!.Value));
+        }
+        return limit;
+    }
+
+    private static List<string> Matches(LicenseRow row, IReadOnlyDictionary<string, long?> mine) =>
+        [.. row.Alternatives.Prepend(row.Name).Where(mine.ContainsKey).Distinct(StringComparer.Ordinal)];
 }

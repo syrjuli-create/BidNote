@@ -50,6 +50,7 @@ dotnet run --project src/BidNote.Web --launch-profile http   # http://localhost:
 
 - 주소: `https://apis.data.go.kr/1230000/ad/BidPublicInfoService/` (차세대 경로만 동작, 구 `…04/05`는 400)
 - `getBidPblancListInfoCnstwk` 공사 공고 목록 — 공고차수 `bidNtceOrd`는 "000" 3자리, 날짜 "yyyy-MM-dd HH:mm:ss", 지역 `cnstrtsiteRgnNm`(시도+시군구), 계약방법 `cntrctCnclsMthdNm`("제한경쟁(3등급)" → "제한경쟁"으로 묶어 저장), 종류 `ntceKindNm`("취소" 포함이면 취소 공고). **기초금액은 없다.**
+- 공고 목록의 `presmptPrce` = 추정가격(원, 문자열 정수). `Notice.EstimatedPrice`에 저장, 입찰 가능 금액 판정의 기준. 금액 상한 규칙은 `LicenseEligibility.AmountLimit` 한 곳.
 - `getBidPblancListInfoLicenseLimit` 면허 제한 (`lcnsLmtNm`, "/0037" 같은 코드 꼬리는 뗀다)
   - **같은 `lmtGrpNo` 안은 "그리고", 그룹끼리는 "또는"** (2026-10-25 실데이터 확인: 그룹1 토목건축 / 그룹2 건축, 한 그룹에 일반소방(전기)+(기계)). 판정은 `LicenseEligibility` 한 곳.
   - `permsnIndstrytyList` = 그 줄 대신 인정하는 업종 "[토목건축공사업/0003]" (전체 줄의 약 24%). `NoticeLicense.Alternatives`에 '|'로 저장. `indstrytyMfrcFldList`(주력분야)는 아직 판정에 쓰지 않는다.

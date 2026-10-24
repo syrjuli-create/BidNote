@@ -33,6 +33,9 @@ public class Notice
     /// <summary>기초금액(원). 공고 뒤에 공개되기도 해서 비어 있을 수 있다.</summary>
     public long? BasePrice { get; set; }
 
+    /// <summary>추정가격(원). 입찰참가자격·적격심사 금액 기준으로 쓴다. 공고 목록 원문에 있다.</summary>
+    public long? EstimatedPrice { get; set; }
+
     /// <summary>낙찰하한율(%).</summary>
     public double LowerLimitRate { get; set; }
 

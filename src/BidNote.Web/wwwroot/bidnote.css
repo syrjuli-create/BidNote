@@ -214,6 +214,8 @@ main { max-width: 1240px; margin: 0 auto; padding: 28px 24px 72px; }
 .licenses .lic { display: inline-flex; align-items: center; gap: 4px; background: var(--brand-soft); color: var(--brand); font-weight: 600; font-size: 13.5px; padding: 4px 4px 4px 10px; border-radius: 8px; }
 .licenses .x { border: 0; background: none; color: inherit; font-size: 16px; line-height: 1; cursor: pointer; padding: 0 4px; }
 .licenses .x:hover { color: var(--hot); }
+.licamounts .in { width: 110px; font-size: 14px; padding: 6px 8px; text-align: right; }
+.licamounts .lic { background: var(--brand-soft); color: var(--brand); font-weight: 600; font-size: 13.5px; padding: 4px 10px; border-radius: 8px; white-space: nowrap; }
 .formgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 .tbl tr.mid td { background: var(--brand-soft); }
 .timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }

@@ -26,12 +26,31 @@
             }
             else
             {
-                <div class="licenses">
-                    @foreach (string l in info.Licenses)
-                    {
-                        <span class="lic">@l <button type="button" class="x" aria-label="@(l) 빼기" disabled="@busy" @onclick="() => RemoveAsync(l)">×</button></span>
-                    }
+                <div class="tbl">
+                    <table class="licamounts">
+                        <thead>
+                            <tr><th>면허</th><th class="r">시공능력평가액(억)</th><th class="r">최근 실적 합계(억)</th><th class="r">실적 배수</th><th class="r">금액 상한</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var l in info.Licenses)
+                            {
+                                var d = Draft(l);
+                                <tr>
+                                    <td><span class="lic">@l.Name</span></td>
+                                    <td class="r"><input class="in num" inputmode="decimal" aria-label="@(l.Name) 시공능력평가액(억 원)" placeholder="예: 35.2" @bind="d.Capacity" /></td>
+                                    <td class="r"><input class="in num" inputmode="decimal" aria-label="@(l.Name) 최근 실적 합계(억 원)" placeholder="예: 120" @bind="d.Performance" /></td>
+                                    <td class="r"><input class="in num" inputmode="decimal" aria-label="@(l.Name) 실적 배수" placeholder="예: 1" @bind="d.Multiple" /></td>
+                                    <td class="r num">@(l.AmountLimit is { } limit ? Display.Eok(limit) : "-")</td>
+                                    <td class="nw">
+                                        <button type="button" class="pill" disabled="@busy" @onclick="() => SaveAmountsAsync(l.Name)">저장</button>
+                                        <button type="button" class="pill danger" aria-label="@(l.Name) 빼기" disabled="@busy" @onclick="() => RemoveAsync(l.Name)">빼기</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
                 </div>
+                <p class="tsub">금액 상한 = 시공능력평가액과 "실적 ÷ 실적 배수" 중 작은 값입니다(넣은 값만으로 계산). 공고 추정가격이 이 상한을 넘으면 참여 가능에서 뺍니다. 실적 배수는 발주처·금액대마다 다르니 공고문·적격심사 기준을 보고 넣으세요. 금액을 비우면 면허만 따집니다.</p>
             }
             <div class="row" style="margin-top:12px">
                 <input class="in" list="license-options" placeholder="면허 이름 (예: 지반조성ㆍ포장공사업)" aria-label="추가할 면허"
@@ -39,7 +58,7 @@
                 <button type="button" class="btn" disabled="@(busy || newLicense.Trim().Length == 0)" @onclick="AddAsync">추가</button>
             </div>
             <datalist id="license-options">
-                @foreach (var o in options.Where(o => !info.Licenses.Contains(o.Name)))
+                @foreach (var o in options.Where(o => !info.LicenseNames.Contains(o.Name)))
                 {
                     <option value="@o.Name">진행 공고 @(o.OpenNoticeCount)건</option>
                 }
@@ -49,11 +68,12 @@
             @if (summary is { } s && info.HasLicenses)
             {
                 <dl class="kv" style="margin-top:12px">
-                    <div class="big"><dt>내 면허로 참여 가능</dt><dd class="num"><a href="/?mine=true">진행 공고 @s.Eligible.ToString("N0", CultureInfo.InvariantCulture)건 보기 →</a></dd></div>
+                    <div class="big"><dt>내 면허·금액으로 참여 가능</dt><dd class="num"><a href="/?mine=true">진행 공고 @s.Eligible.ToString("N0", CultureInfo.InvariantCulture)건 보기 →</a></dd></div>
+                    <div><dt>면허는 맞지만 금액 상한 초과</dt><dd class="num">@s.OverLimit.ToString("N0", CultureInfo.InvariantCulture)건</dd></div>
                     <div><dt>면허가 맞지 않는 공고</dt><dd class="num">@s.NotEligible.ToString("N0", CultureInfo.InvariantCulture)건</dd></div>
                     <div><dt>면허 제한 정보 없음</dt><dd class="num">@s.Unknown.ToString("N0", CultureInfo.InvariantCulture)건</dd></div>
                 </dl>
-                <p class="tsub">공고의 면허 제한 중 한 줄(그룹)의 면허를 모두 갖추면 참여 가능으로 봅니다. 토목건축공사업처럼 대신 인정하는 업종도 따집니다. 주력분야·지역 제한·시공능력은 따지지 않습니다.</p>
+                <p class="tsub">공고의 면허 제한 중 한 줄(그룹)의 면허를 모두 갖추면 면허는 맞는 것으로 봅니다. 토목건축공사업처럼 대신 인정하는 업종도 따집니다. 금액은 공고 추정가격을 금액 상한과 비교합니다(추정가격이 없는 공고는 면허만 봄). 주력분야·지역 제한은 따지지 않습니다.</p>
             }
         }
     </section>
@@ -101,6 +121,65 @@
         public string Email { get; set; } = "";
     }
 
+    /// <summary>면허 한 줄의 금액 입력칸 (억 원 단위 글자 그대로). 저장하면 다시 채운다.</summary>
+    private sealed class AmountDraft
+    {
+        public string Capacity { get; set; } = "";
+        public string Performance { get; set; } = "";
+        public string Multiple { get; set; } = "";
+    }
+
+    private const decimal Eok = 100_000_000m;
+    private readonly Dictionary<string, AmountDraft> drafts = new(StringComparer.Ordinal);
+
+    private AmountDraft Draft(CompanyLicenseInfo l)
+    {
+        if (!drafts.TryGetValue(l.Name, out var d))
+        {
+            d = new AmountDraft
+            {
+                Capacity = l.CapacityAmount is { } c ? (c / Eok).ToString("0.####", CultureInfo.InvariantCulture) : "",
+                Performance = l.PerformanceAmount is { } p ? (p / Eok).ToString("0.####", CultureInfo.InvariantCulture) : "",
+                Multiple = l.PerformanceMultiple is { } m ? m.ToString("0.##", CultureInfo.InvariantCulture) : "",
+            };
+            drafts[l.Name] = d;
+        }
+        return d;
+    }
+
+    /// <summary>빈칸은 null, 숫자가 아니면 false.</summary>
+    private static bool TryNumber(string text, out decimal? value)
+    {
+        value = null;
+        string t = (text ?? "").Replace(",", "", StringComparison.Ordinal).Trim();
+        if (t.Length == 0) return true;
+        if (!decimal.TryParse(t, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal v) || v < 0) return false;
+        value = v;
+        return true;
+    }
+
+    private async Task SaveAmountsAsync(string name)
+    {
+        var d = drafts[name];
+        if (!TryNumber(d.Capacity, out var capacity) || !TryNumber(d.Performance, out var performance) || !TryNumber(d.Multiple, out var multiple))
+        {
+            licenseStatus = $"'{name}'의 금액은 숫자로 넣어 주세요 (억 원 단위, 예: 35.2).";
+            return;
+        }
+        busy = true;
+        await Store.SaveLicenseAmountsAsync(name, new LicenseAmountsInput(
+            capacity is { } c ? (long)Math.Round(c * Eok) : null,
+            performance is { } p ? (long)Math.Round(p * Eok) : null,
+            multiple is { } m ? (double)m : null), CancellationToken.None);
+        drafts.Remove(name);
+        await LoadAsync();
+        var saved = info!.Licenses.First(x => x.Name == name);
+        licenseStatus = saved.AmountLimit is { } limit
+            ? $"'{name}' 금액을 저장했습니다. 금액 상한 {Display.Eok(limit)}."
+            : $"'{name}' 금액을 저장했습니다. 상한을 계산할 값이 없어 면허만 따집니다 (실적은 배수와 함께 넣어야 합니다).";
+        busy = false;
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync();
@@ -137,6 +216,7 @@
     {
         busy = true;
         await Store.RemoveLicenseAsync(name, CancellationToken.None);
+        drafts.Remove(name);
         licenseStatus = $"'{name}'을(를) 뺐습니다.";
         await LoadAsync();
         busy = false;

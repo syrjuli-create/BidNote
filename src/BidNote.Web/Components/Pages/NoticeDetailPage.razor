@@ -103,7 +103,15 @@
 
         <section class="panel">
             <h2 class="sub">면허(업종) 제한
-                @if (eligibility is { Kind: EligibilityKind.Eligible })
+                @if (eligibility is { Kind: EligibilityKind.Eligible, Amount: AmountVerdict.Over } over)
+                {
+                    <span class="chip warn">면허는 맞지만 금액 상한 초과 (상한 @Display.Eok(over.AmountLimit), 추정가격 @Display.Eok(notice.EstimatedPrice))</span>
+                }
+                else if (eligibility is { Kind: EligibilityKind.Eligible, Amount: AmountVerdict.Within } within)
+                {
+                    <span class="chip ok">참여 가능 (금액 상한 @Display.Eok(within.AmountLimit) 이내)</span>
+                }
+                else if (eligibility is { Kind: EligibilityKind.Eligible })
                 {
                     <span class="chip ok">내 면허로 참여 가능</span>
                 }

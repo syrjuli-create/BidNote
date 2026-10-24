@@ -53,6 +53,7 @@ public sealed class NoticeDetailQueries(BidNoteDbContext db) : INoticeDetailQuer
             SiteRegionName = n.SiteRegionName,
             License = n.License,
             BasePrice = n.BasePrice,
+            EstimatedPrice = n.EstimatedPrice,
             BasePriceOpenedAt = n.BasePriceOpenedAt,
             ReservePriceRange = n.ReservePriceRange,
             AValue = n.AValue,
