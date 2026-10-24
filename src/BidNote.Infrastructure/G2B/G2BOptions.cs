@@ -13,6 +13,9 @@ public sealed class G2BOptions
     /// <summary>입찰공고정보서비스 주소 (차세대 나라장터).</summary>
     public string BaseUrl { get; set; } = "https://apis.data.go.kr/1230000/ad/BidPublicInfoService/";
 
+    /// <summary>낙찰정보서비스 주소 (개찰 결과). 같은 키로 활용 신청한다. `/as/` 경로만 동작한다 (2026-10-25 확인).</summary>
+    public string AwardBaseUrl { get; set; } = "https://apis.data.go.kr/1230000/as/ScsbidInfoService/";
+
     /// <summary>한 번에 받는 건수. 999까지 동작하는 것을 확인했다 (2026-10-19).</summary>
     public int PageSize { get; set; } = 999;
 

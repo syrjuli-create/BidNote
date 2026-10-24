@@ -1,7 +1,9 @@
 @page "/mine/bids"
 @using System.Globalization
 @using BidNote.Application.Bidding
+@using BidNote.Application.Results
 @inject IMyBidStore Store
+@inject IBidResultService Results
 @inject TimeProvider Clock
 
 <PageTitle>내 투찰 기록 · 입찰노트</PageTitle>
@@ -21,7 +23,7 @@
         <div class="tbl">
             <table>
                 <thead>
-                    <tr><th>상태</th><th>공고명 · 발주기관</th><th class="r">기초금액</th><th class="r">내 사정률</th><th class="r">내 투찰금액</th><th>마감 · 개찰</th></tr>
+                    <tr><th>상태</th><th>공고명 · 발주기관</th><th class="r">기초금액</th><th class="r">내 사정률</th><th class="r">내 투찰금액</th><th class="r">1순위 사정률</th><th>내 순위</th><th>마감 · 개찰</th></tr>
                 </thead>
                 <tbody>
                     @foreach (var b in items)
@@ -37,24 +39,39 @@
                             <td class="r num">@Display.Eok(b.BasePrice)</td>
                             <td class="r num"><b>@b.AssessmentRate.ToString("0.0###", CultureInfo.InvariantCulture)%</b></td>
                             <td class="r num">@Display.Won(b.BidAmount)원</td>
+                            @if (outcomes.TryGetValue(b.NoticeId, out var o))
+                            {
+                                <td class="r num">
+                                    @(o.WinnerAssessmentRate is { } w ? w.ToString("0.0000", CultureInfo.InvariantCulture) + "%" : "-")
+                                    @if (o.RateGap is { } gap) { <span class="tsub">차이 @gap.ToString("+0.0000;-0.0000;0", CultureInfo.InvariantCulture)%p</span> }
+                                </td>
+                                <td class="nw">@BidResultPanel.RankText(o.Rank)<span class="tsub">@o.Status · @(o.ParticipantCount.ToString("N0", CultureInfo.InvariantCulture))곳</span></td>
+                            }
+                            else
+                            {
+                                <td class="r tsub">-</td>
+                                <td class="tsub">@(stage == MyBidStage.Opened ? "결과 대기" : "-")</td>
+                            }
                             <td class="num nw">@Display.ShortDateTime(b.DueAt)<span class="tsub">개찰 @Display.ShortDateTime(b.OpenAt)</span></td>
                         </tr>
                     }
                 </tbody>
             </table>
         </div>
-        <p class="tsub">개찰 결과(1순위 사정률, 내 순위)는 다음 단계에서 나라장터 개찰 결과를 받아 함께 보여 줄 예정입니다.</p>
+        <p class="tsub">1순위 사정률은 1순위 투찰금액을 거꾸로 계산한 값, 차이는 내 사정률 − 1순위 사정률입니다. 내 순위는 업체별 순위를 받은 뒤 계산합니다(수집할 때마다 몇 건씩, 또는 공고 상세를 열면 받습니다).</p>
     }
 </div>
 
 @code {
     private IReadOnlyList<MyBidItem> items = [];
+    private IReadOnlyDictionary<int, MyBidOutcome> outcomes = new Dictionary<int, MyBidOutcome>();
     private DateTime now;
 
     protected override async Task OnInitializedAsync()
     {
         now = Clock.GetLocalNow().DateTime;
         items = await Store.ListAsync(now, CancellationToken.None);
+        outcomes = await Results.MyBidOutcomesAsync(CancellationToken.None);
     }
 
     private int Count(MyBidStage stage) => items.Count(x => x.StageAt(now) == stage);

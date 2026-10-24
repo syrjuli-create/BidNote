@@ -54,7 +54,10 @@ dotnet run --project src/BidNote.Web --launch-profile http   # http://localhost:
 - `getBidPblancListInfoCnstwkBsisAmount` 기초금액 `bssamt`, 순공사원가 `bssAmtPurcnstcst`, A값 적용 여부 `bidPrceCalclAYn`
   - **A값** = 국민연금 `npnInsrprm` + 건강보험 `mrfnHealthInsrprm` + 노인장기요양 `odsnLngtrmrcprInsrprm` + 퇴직공제부금 `rtrfundNon` + 산업안전보건관리비 `sftyMngcst` + 안전관리비 `sftyChckMngcst` + 품질관리비 `qltyMngcst`(`qltyMngcstAObjYn`=Y일 때만). 환경보전비·하도급 지급보증수수료는 넣지 않는다. 항목 표는 `G2BCollector.CostFields` 한 곳.
 - 호출은 `numOfRows=999`, `inqryDiv=1`. 하루 사용량은 `ApiUsages` 표 + `/status`, 한도 95%에서 자동 정지.
-- 개찰 결과는 별도 서비스(**낙찰정보서비스**) — 활용 신청이 따로 필요하다.
+- 개찰 결과는 **낙찰정보서비스** `https://apis.data.go.kr/1230000/as/ScsbidInfoService/` (같은 키, `/as/` 경로만 동작. 구 경로는 400)
+  - `getOpengResultListInfoCnstwk` 개찰 목록 — `inqryDiv=1` + 기간(개찰일시, 하루 약 340건). 1순위는 `opengCorpInfo` 한 칸에 "업체명^사업자번호^대표자^투찰금액^투찰률". 재입찰은 `rbidNo`로 여러 줄.
+  - `getOpengResultListInfoOpengCompt` 업체별 순위 — `inqryDiv=4&bidNtceNo=&bidNtceOrd=`. 참가 3천 곳이 넘는 공고도 있다(999건씩 여러 페이지). **하한 미달·예가 초과·취소 업체는 `opengRank`가 빈 값**이고 비고 `rmrk`에 이유가 온다.
+  - `getOpengResultListInfoCnstwkPreparPcDetail` 복수예비가격 15줄 — `inqryDiv=2&bidNtceNo=…`. 줄마다 같은 `plnprc`(예정가격)·`bssamt`가 온다. 실제 사정률 = plnprc / bssamt.
 
 ## 수집 규칙 (지키지 않으면 실제로 데이터가 깨졌던 것들)
 

@@ -1,10 +1,12 @@
 using BidNote.Application.Collecting;
+using BidNote.Application.Results;
 
 namespace BidNote.Web.Services;
 
 /// <summary>
 /// 켜져 있는 동안 주기적으로 공고를 수집한다. 켤 때는 마지막으로 성공한 시각부터 이어 받아
 /// PC가 꺼져 있던 동안 빠진 공고를 채운다. 주기·기간은 수집 설정 화면에서 바꾸면 다음 주기부터 적용된다.
+/// 공고를 받은 뒤 같은 기간의 개찰 결과도 받는다 (실패해도 공고 수집은 성공으로 둔다).
 /// </summary>
 public sealed class CollectorHostedService(
     IServiceScopeFactory scopeFactory,
@@ -22,7 +24,7 @@ public sealed class CollectorHostedService(
         while (!stoppingToken.IsCancellationRequested)
         {
             DateTime to = timeProvider.GetLocalNow().DateTime;
-            if (await RunAsync(from, to, trigger, stoppingToken)) from = to;
+            if (await RunAsync(from, to, trigger, settings.BackfillDays, stoppingToken)) from = to;
 
             settings = await LoadSettingsAsync(stoppingToken);
             int? backfillDays = await WaitAsync(TimeSpan.FromMinutes(settings.IntervalMinutes), stoppingToken);
@@ -30,7 +32,7 @@ public sealed class CollectorHostedService(
             {
                 // 다시 받기는 그 기간만 받고, 원래 이어 받던 위치(from)는 그대로 둔다.
                 DateTime now = timeProvider.GetLocalNow().DateTime;
-                await RunAsync(now.AddDays(-days), now, $"다시 받기({days}일)", stoppingToken);
+                await RunAsync(now.AddDays(-days), now, $"다시 받기({days}일)", days, stoppingToken);
             }
             trigger = "자동";
         }
@@ -49,7 +51,10 @@ public sealed class CollectorHostedService(
         return null;
     }
 
-    private async Task<bool> RunAsync(DateTime from, DateTime to, string trigger, CancellationToken stoppingToken)
+    /// <summary>한 번 수집할 때 순위를 받아 둘 내 투찰·관심 공고 수. 공고마다 2번 이상 호출하므로 적게 둔다.</summary>
+    private const int PendingRanksPerRun = 10;
+
+    private async Task<bool> RunAsync(DateTime from, DateTime to, string trigger, int backfillDays, CancellationToken stoppingToken)
     {
         try
         {
@@ -60,6 +65,7 @@ public sealed class CollectorHostedService(
             logger.LogInformation("수집 결과({Trigger}): 새 공고 {Added}건, 변경 {Changed}건, 변화 없음 {Unchanged}건, 기초금액 {BasePrices}건, 원문 저장 {RawSaved}건",
                 trigger, result.Added, result.Changed, result.Unchanged, result.BasePricesUpdated, result.RawSaved);
             state.Record(new CollectRun(to, trigger, result, null));
+            await CollectResultsAsync(scope.ServiceProvider.GetRequiredService<IBidResultService>(), from, to, backfillDays, stoppingToken);
             return true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -68,6 +74,23 @@ public sealed class CollectorHostedService(
             logger.LogError(ex, "공고 수집 실패({Trigger}): {From:yyyy-MM-dd HH:mm}~{To:yyyy-MM-dd HH:mm}. 다음 주기에 다시 시도합니다.", trigger, from, to);
             state.Record(new CollectRun(to, trigger, null, ex.Message));
             return false;
+        }
+    }
+
+    /// <summary>개찰 결과를 받는다. 아직 하나도 없으면 공고 백필 기간만큼 거슬러 받는다.</summary>
+    private async Task CollectResultsAsync(IBidResultService results, DateTime from, DateTime to, int backfillDays, CancellationToken stoppingToken)
+    {
+        try
+        {
+            if (!await results.HasAnyAsync(stoppingToken)) from = to.AddDays(-Math.Max(backfillDays, 1));
+            int updated = await results.CollectOpeningsAsync(from, to, stoppingToken);
+            int ranks = await results.FetchPendingRanksAsync(PendingRanksPerRun, stoppingToken);
+            logger.LogInformation("개찰 결과: 반영 {Updated}건, 순위 받음 {Ranks}건", updated, ranks);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // 공고 수집과 따로 실패한다. 빠진 기간은 수집 설정의 '다시 받기'로 채울 수 있다.
+            logger.LogWarning(ex, "개찰 결과 수집 실패: {From:yyyy-MM-dd HH:mm}~{To:yyyy-MM-dd HH:mm}", from, to);
         }
     }
 

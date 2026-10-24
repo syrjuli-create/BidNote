@@ -374,6 +374,117 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                     b.ToTable("NoticeLicenses");
                 });
 
+            modelBuilder.Entity("BidNote.Domain.Results.BidResult", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BidSeq")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClassNo")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("NoticeId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("OpenedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ParticipantCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("PlannedPrice")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("RanksComplete")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("RanksFetchedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RawHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RebidNo")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("ResultBasePrice")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("WinnerAmount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("WinnerBidRate")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("WinnerBizNo")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WinnerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NoticeId")
+                        .IsUnique();
+
+                    b.ToTable("BidResults");
+                });
+
+            modelBuilder.Entity("BidNote.Domain.Results.BidResultRank", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("Amount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("BidRate")
+                        .HasColumnType("REAL");
+
+                    b.Property<int>("BidResultId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BizNo")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CompanyName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Rank")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Remark")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BidResultId", "Rank");
+
+                    b.ToTable("BidResultRanks");
+                });
+
             modelBuilder.Entity("BidNote.Domain.Searching.LastSearch", b =>
                 {
                     b.Property<int>("Id")
@@ -466,11 +577,36 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                     b.Navigation("Notice");
                 });
 
+            modelBuilder.Entity("BidNote.Domain.Results.BidResult", b =>
+                {
+                    b.HasOne("BidNote.Domain.Notices.Notice", "Notice")
+                        .WithMany()
+                        .HasForeignKey("NoticeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Notice");
+                });
+
+            modelBuilder.Entity("BidNote.Domain.Results.BidResultRank", b =>
+                {
+                    b.HasOne("BidNote.Domain.Results.BidResult", null)
+                        .WithMany("Ranks")
+                        .HasForeignKey("BidResultId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("BidNote.Domain.Notices.Notice", b =>
                 {
                     b.Navigation("Histories");
 
                     b.Navigation("Licenses");
+                });
+
+            modelBuilder.Entity("BidNote.Domain.Results.BidResult", b =>
+                {
+                    b.Navigation("Ranks");
                 });
 #pragma warning restore 612, 618
         }
