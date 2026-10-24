@@ -28,7 +28,7 @@
             <div class="seg">
                 @foreach (int d in CollectorRules.BackfillChoices)
                 {
-                    <label><input type="radio" name="Form.BackfillDays" value="@d" checked="@(Form.BackfillDays == d)" /><span>@(d)일<small>호출 약 @CollectorRules.EstimateCalls(d)회</small></span></label>
+                    <label><input type="radio" name="Form.BackfillDays" value="@d" checked="@(Settings.BackfillDays == d)" /><span>@(d)일<small>호출 약 @CollectorRules.EstimateCalls(d)회</small></span></label>
                 }
             </div>
         </fieldset>
@@ -39,7 +39,7 @@
             <div class="seg">
                 @foreach (int m in CollectorRules.IntervalChoices)
                 {
-                    <label><input type="radio" name="Form.IntervalMinutes" value="@m" checked="@(Form.IntervalMinutes == m)" /><span>@IntervalText(m)<small>하루 약 @(DailyCalls(m))회</small></span></label>
+                    <label><input type="radio" name="Form.IntervalMinutes" value="@m" checked="@(Settings.IntervalMinutes == m)" /><span>@IntervalText(m)<small>하루 약 @(DailyCalls(m))회</small></span></label>
                 }
             </div>
         </fieldset>
@@ -57,7 +57,7 @@
         <div class="seg">
             @foreach (int d in CollectorRules.BackfillChoices)
             {
-                <label><input type="radio" name="BackfillForm.Days" value="@d" checked="@(BackfillForm.Days == d)" /><span>최근 @(d)일<small>호출 약 @CollectorRules.EstimateCalls(d)회</small></span></label>
+                <label><input type="radio" name="BackfillForm.Days" value="@d" checked="@(BackfillValues.Days == d)" /><span>최근 @(d)일<small>호출 약 @CollectorRules.EstimateCalls(d)회</small></span></label>
             }
         </div>
         <div class="row">
@@ -73,8 +73,12 @@
 </div>
 
 @code {
-    [SupplyParameterFromForm(FormName = "collect-settings")] private SettingsInput Form { get; set; } = new();
-    [SupplyParameterFromForm(FormName = "collect-backfill")] private BackfillInput BackfillForm { get; set; } = new();
+    // 폼 값을 받는 속성에 초기값을 주면 폼을 보낼 때 null로 덮일 수 있다(BL0008). 받는 속성은 비워 두고 아래 접근 속성으로 쓴다.
+    [SupplyParameterFromForm(FormName = "collect-settings")] private SettingsInput? Form { get; set; }
+    [SupplyParameterFromForm(FormName = "collect-backfill")] private BackfillInput? BackfillForm { get; set; }
+
+    private SettingsInput Settings => Form ??= new();
+    private BackfillInput BackfillValues => BackfillForm ??= new();
 
     private CollectorSettingsValues? current;
     private string? message;
@@ -95,17 +99,17 @@
     {
         current = await Store.GetAsync(CancellationToken.None);
         // 폼을 보낸 요청이 아니면 저장된 값으로 채운다.
-        if (Form.BackfillDays == 0) Form.BackfillDays = current.BackfillDays;
-        if (Form.IntervalMinutes == 0) Form.IntervalMinutes = current.IntervalMinutes;
+        if (Settings.BackfillDays == 0) Settings.BackfillDays = current.BackfillDays;
+        if (Settings.IntervalMinutes == 0) Settings.IntervalMinutes = current.IntervalMinutes;
     }
 
     private async Task SaveAsync()
     {
         try
         {
-            await Store.SaveAsync(Form.BackfillDays, Form.IntervalMinutes, CancellationToken.None);
+            await Store.SaveAsync(Settings.BackfillDays, Settings.IntervalMinutes, CancellationToken.None);
             current = await Store.GetAsync(CancellationToken.None);
-            message = $"저장했습니다. 처음 받을 기간 {Form.BackfillDays}일, 수집 주기 {IntervalText(Form.IntervalMinutes)}. 다음 수집부터 적용됩니다.";
+            message = $"저장했습니다. 처음 받을 기간 {Settings.BackfillDays}일, 수집 주기 {IntervalText(Settings.IntervalMinutes)}. 다음 수집부터 적용됩니다.";
             failed = false;
         }
         catch (ArgumentOutOfRangeException ex)
@@ -118,7 +122,7 @@
 
     private void Backfill()
     {
-        int days = Math.Clamp(BackfillForm.Days, CollectorRules.MinBackfillDays, CollectorRules.MaxBackfillDays);
+        int days = Math.Clamp(BackfillValues.Days, CollectorRules.MinBackfillDays, CollectorRules.MaxBackfillDays);
         Signal.RequestBackfill(days);
         message = $"최근 {days}일치를 백그라운드에서 받기 시작합니다. 결과는 수집 현황에서 확인하세요.";
         failed = false;

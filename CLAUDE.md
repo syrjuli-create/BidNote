@@ -25,7 +25,7 @@
 ## 명령
 
 ```bash
-dotnet build -warnaserror          # 첫 빌드에 CollectSettings.razor BL0008 오류 2개가 잠깐 뜨면 한 번 더 빌드 (파일 복사 경합, 두 번째는 0개)
+dotnet build -warnaserror          # [SupplyParameterFromForm] 속성에 초기값(= new())을 주면 BL0008 오류. 받는 속성은 nullable로 두고 접근 속성으로 쓴다 (CollectSettings.razor)
 dotnet test
 dotnet format --verify-no-changes
 dotnet run --project src/BidNote.Web --launch-profile http   # http://localhost:5069 , /health 로 상태 확인
