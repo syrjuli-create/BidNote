@@ -90,6 +90,88 @@ public sealed class FavoriteStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task 빼면_휴지통으로_가고_메모와_폴더를_지키며_복원된다()
+    {
+        int id = AddNotice("R1", Now.AddDays(2));
+        await store.SaveMemoAsync(id, "현장 확인", CancellationToken.None);
+        await store.MoveToFolderAsync(id, FavoriteFolder.Planned, CancellationToken.None);
+
+        await store.TrashAsync(id, CancellationToken.None);
+
+        var trashed = await store.ListAsync(Now, CancellationToken.None);
+        Assert.Empty(trashed.Open);
+        Assert.Equal(["R1"], trashed.Trash.Select(x => x.BidNo));
+        Assert.Empty(await store.FavoriteIdsAsync([id], CancellationToken.None));
+        Assert.Equal(0, await store.CountOpenAsync(Now, CancellationToken.None));
+
+        await store.RestoreAsync(id, CancellationToken.None);
+
+        var restored = (await store.ListAsync(Now, CancellationToken.None)).Open.Single();
+        Assert.Equal(FavoriteFolder.Planned, restored.Folder);
+        Assert.Equal("현장 확인", restored.Memo);
+        Assert.Empty((await store.ListAsync(Now, CancellationToken.None)).Trash);
+    }
+
+    [Fact]
+    public async Task 휴지통에_있는_공고의_별을_누르면_다시_담긴다()
+    {
+        int id = AddNotice("R1", Now.AddDays(2));
+        await store.ToggleAsync(id, CancellationToken.None);
+        await store.ToggleAsync(id, CancellationToken.None);
+
+        Assert.True(await store.ToggleAsync(id, CancellationToken.None));
+        Assert.Equal([id], await store.FavoriteIdsAsync([id], CancellationToken.None));
+        using var db = testDb.NewContext();
+        Assert.Equal(1, await db.FavoriteNotices.CountAsync());
+    }
+
+    [Fact]
+    public async Task 폴더_이동은_휴지통에_있는_공고에는_적용되지_않는다()
+    {
+        int id = AddNotice("R1", Now.AddDays(2));
+        await store.ToggleAsync(id, CancellationToken.None);
+        await store.TrashAsync(id, CancellationToken.None);
+
+        await store.MoveToFolderAsync(id, FavoriteFolder.Submitted, CancellationToken.None);
+
+        Assert.Equal(FavoriteFolder.Reviewing, (await store.ListAsync(Now, CancellationToken.None)).Trash.Single().Folder);
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => store.MoveToFolderAsync(id, (FavoriteFolder)99, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task 완전_삭제와_비우기는_휴지통에_있는_것만_지운다()
+    {
+        int kept = AddNotice("KEEP", Now.AddDays(2));
+        int one = AddNotice("ONE", Now.AddDays(2));
+        int two = AddNotice("TWO", Now.AddDays(2));
+        int three = AddNotice("THREE", Now.AddDays(2));
+        foreach (int id in new[] { kept, one, two, three }) await store.ToggleAsync(id, CancellationToken.None);
+        foreach (int id in new[] { one, two }) await store.TrashAsync(id, CancellationToken.None);
+
+        await store.DeleteForeverAsync(kept, CancellationToken.None);
+        await store.DeleteForeverAsync(one, CancellationToken.None);
+        Assert.Equal(["KEEP", "THREE"], (await store.ListAsync(Now, CancellationToken.None)).Open.Select(x => x.BidNo).Order());
+        Assert.Equal(["TWO"], (await store.ListAsync(Now, CancellationToken.None)).Trash.Select(x => x.BidNo));
+
+        Assert.Equal(1, await store.EmptyTrashAsync(CancellationToken.None));
+        using var db = testDb.NewContext();
+        Assert.Equal(2, await db.FavoriteNotices.CountAsync());
+    }
+
+    [Fact]
+    public async Task 휴지통에_있는_공고에_메모를_저장하면_꺼내진다()
+    {
+        int id = AddNotice("R1", Now.AddDays(2));
+        await store.ToggleAsync(id, CancellationToken.None);
+        await store.TrashAsync(id, CancellationToken.None);
+
+        await store.SaveMemoAsync(id, "다시 검토", CancellationToken.None);
+
+        Assert.Equal("다시 검토", (await store.ListAsync(Now, CancellationToken.None)).Open.Single().Memo);
+    }
+
+    [Fact]
     public async Task 공고가_지워지면_관심_공고도_함께_지워진다()
     {
         int id = AddNotice("FAKE-1", Now.AddDays(2));

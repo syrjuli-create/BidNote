@@ -166,6 +166,9 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("AddedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Folder")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Memo")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -173,6 +176,9 @@ namespace BidNote.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("NoticeId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("TrashedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
