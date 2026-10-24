@@ -2,6 +2,7 @@ using BidNote.Domain.Bidding;
 using BidNote.Domain.Favorites;
 using BidNote.Domain.Collecting;
 using BidNote.Domain.Notices;
+using BidNote.Domain.Searching;
 using Microsoft.EntityFrameworkCore;
 
 namespace BidNote.Infrastructure.Persistence;
@@ -16,6 +17,8 @@ public sealed class BidNoteDbContext(DbContextOptions<BidNoteDbContext> options)
     public DbSet<CollectorSetting> CollectorSettings => Set<CollectorSetting>();
     public DbSet<FavoriteNotice> FavoriteNotices => Set<FavoriteNotice>();
     public DbSet<MyBid> MyBids => Set<MyBid>();
+    public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
+    public DbSet<LastSearch> LastSearches => Set<LastSearch>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -43,6 +46,17 @@ public sealed class BidNoteDbContext(DbContextOptions<BidNoteDbContext> options)
             e.HasIndex(x => x.CollectedAt);
         });
         modelBuilder.Entity<CollectorSetting>(e => e.Property(x => x.Id).ValueGeneratedNever());
+        modelBuilder.Entity<SavedSearch>(e =>
+        {
+            e.HasIndex(x => x.Name).IsUnique();
+            e.Property(x => x.Name).HasMaxLength(SavedSearch.MaxNameLength);
+            e.Property(x => x.Query).HasMaxLength(SavedSearch.MaxQueryLength);
+        });
+        modelBuilder.Entity<LastSearch>(e =>
+        {
+            e.Property(x => x.Id).ValueGeneratedNever();
+            e.Property(x => x.Query).HasMaxLength(SavedSearch.MaxQueryLength);
+        });
         modelBuilder.Entity<FavoriteNotice>(e =>
         {
             e.HasIndex(x => x.NoticeId).IsUnique();

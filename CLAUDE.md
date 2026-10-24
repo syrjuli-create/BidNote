@@ -68,6 +68,8 @@ dotnet run --project src/BidNote.Web --launch-profile http   # http://localhost:
 
 - Razor에서 `@expr건`은 식별자로 읽힌다 → `@(expr)건`.
 - 목록의 별(관심 공고) 버튼은 표 전체를 대화형 구성요소 하나(`NoticeTable`)로 둔다. 줄마다 따로 두면 200줄에서 연결이 끊겼다.
+- 메인 `/`는 쿼리 없이 열면 마지막 검색 조건(`LastSearches`)으로 넘어간다. 필터를 비우는 링크는 `/` 대신 `/?reset=true`를 쓴다. 조건 비교·저장은 `SearchQuery.Normalize`를 거친다(새 필터를 추가하면 여기에도 넣는다).
+- 메인 필터는 GET 폼 안에 있다. 그 안에 대화형 입력칸을 두면 Enter가 검색을 제출하므로 `form="없는id"`로 폼에서 떼어 둔다(`SavedSearchPanel`).
 - 디자인: 인천시청 누리집 참고 (Noto Sans KR, #0053B5 파랑 · #07296A 남색 · #F7B02A 노랑).
 
 ## 작업 규칙

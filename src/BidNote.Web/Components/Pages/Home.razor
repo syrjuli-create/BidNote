@@ -5,6 +5,7 @@
 @inject NavigationManager Nav
 @inject IConfiguration Config
 @inject BidNote.Application.Favorites.IFavoriteStore Favorites
+@inject ISavedSearchStore Searches
 
 <PageTitle>입찰노트</PageTitle>
 
@@ -83,15 +84,16 @@
             <label class="check"><input type="checkbox" name="new" value="true" checked="@(IsNew == true)" /> 최근 5일 새 공고만</label>
             <div class="row">
                 <button class="btn" type="submit">적용</button>
-                <a class="btn line" href="/">초기화</a>
+                <a class="btn line" href="@ResetUrl">초기화</a>
             </div>
+            <SavedSearchPanel Query="@currentQuery" @rendermode="InteractiveServer" />
         </aside>
 
         <section class="results">
             @if (summary is not null)
             {
                 <nav class="quick" aria-label="빠른 보기">
-                    <a href="/" class="@(IsPlain ? "on" : "")"><b>@summary.ActiveCount</b> 진행 중</a>
+                    <a href="@ResetUrl" class="@(IsPlain ? "on" : "")"><b>@summary.ActiveCount</b> 진행 중</a>
                     <a href="/?due=1" class="hot @(Due == 1 && OnlyOne ? "on" : "")"><b>@summary.ClosingSoonCount</b> 내일까지 마감</a>
                     <a href="/?new=true" class="@(IsNew == true && OnlyOne ? "on" : "")"><b>@summary.NewCount</b> 새 공고</a>
                     <a href="/?corrected=true" class="@(Corrected == true && OnlyOne ? "on" : "")"><b>@summary.CorrectedCount</b> 정정</a>
@@ -124,7 +126,7 @@
             }
             else if (result.Items.Count == 0)
             {
-                <div class="empty">조건에 맞는 공고가 없습니다. <a href="/">필터 초기화</a></div>
+                <div class="empty">조건에 맞는 공고가 없습니다. <a href="@ResetUrl">필터 초기화</a></div>
             }
             else
             {
@@ -164,6 +166,12 @@
     [SupplyParameterFromQuery(Name = "nosu")] public bool? NoNegotiated { get; set; }
     [SupplyParameterFromQuery(Name = "sort")] public string? Sort { get; set; }
     [SupplyParameterFromQuery(Name = "page")] public int? PageNo { get; set; }
+    [SupplyParameterFromQuery(Name = "reset")] public bool? Reset { get; set; }
+
+    /// <summary>"/"만 열면 마지막 조건으로 돌아가므로, 필터를 비울 때는 이 주소로 마지막 조건까지 지운다.</summary>
+    private const string ResetUrl = "/?reset=true";
+
+    private string currentQuery = "";
 
     private HomeSummary? summary;
     private NoticeSearchResult? result;
@@ -208,6 +216,26 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        // 마지막 검색 조건: 필터 없이 "/"를 열면 되살리고, 조건을 쓰면 기억하고, 초기화하면 지운다.
+        string rawQuery = new Uri(Nav.Uri).Query;
+        if (Reset == true)
+        {
+            await Searches.SetLastAsync("", CancellationToken.None);
+            Nav.NavigateTo("/", replace: true);
+            return;
+        }
+        if (rawQuery.Length == 0)
+        {
+            string last = await Searches.GetLastAsync(CancellationToken.None);
+            if (last.Length > 0)
+            {
+                Nav.NavigateTo("/?" + last, replace: true);
+                return;
+            }
+        }
+        currentQuery = SearchQuery.Normalize(rawQuery);
+        if (rawQuery.Length > 0) await Searches.SetLastAsync(currentQuery, CancellationToken.None);
+
         now = Clock.GetLocalNow().DateTime;
         heroVideo = Config["Home:HeroVideo"];
         heroPoster = Config["Home:HeroPoster"];

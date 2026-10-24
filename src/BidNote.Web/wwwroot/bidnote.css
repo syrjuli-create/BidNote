@@ -87,6 +87,16 @@ main { max-width: 1240px; margin: 0 auto; padding: 28px 24px 72px; }
 .check input { width: 17px; height: 17px; margin: 0; accent-color: var(--brand); cursor: pointer; }
 .cnt { margin-left: auto; font-size: 12px; color: var(--muted); background: var(--bg); border-radius: 999px; padding: 1px 8px; font-variant-numeric: tabular-nums; }
 .filters .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; border-top: 1px solid var(--line); padding-top: 16px; }
+.savedsearch ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.savedsearch li { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0 6px; padding: 6px 8px; border-radius: 8px; }
+.savedsearch li.on { background: var(--brand-soft); }
+.savedsearch li a { font-size: 14px; font-weight: 700; color: var(--ink); text-decoration: none; overflow-wrap: anywhere; }
+.savedsearch li a:hover { color: var(--brand); }
+.savedsearch li .tsub { grid-column: 1; font-size: 12px; }
+.savedsearch li .x { grid-column: 2; grid-row: 1 / span 2; border: 0; background: none; font-size: 18px; line-height: 1; color: var(--muted); cursor: pointer; padding: 4px; }
+.savedsearch li .x:hover { color: var(--hot); }
+.filters .savedsearch .row { grid-template-columns: 1fr auto; border-top: 0; padding-top: 6px; }
+.savedsearch .in { font-size: 14px; padding: 8px 10px; }
 
 /* 결과 */
 .results { display: grid; gap: 14px; min-width: 0; }
