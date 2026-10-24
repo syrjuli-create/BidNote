@@ -8,8 +8,11 @@ public sealed record FieldChange(string Label, string Before, string After);
 
 public sealed record NoticeChange(DateTime DetectedAt, NoticeChangeType Type, string FromSeq, string ToSeq, IReadOnlyList<FieldChange> Fields);
 
-/// <summary>면허 제한 한 그룹. 그룹 안의 면허는 "또는", 그룹끼리는 "그리고"로 본다.</summary>
-public sealed record LicenseGroup(int GroupNo, IReadOnlyList<string> Names);
+/// <summary>면허 제한 한 줄. Alternatives는 이 면허 대신 인정하는 업종이다.</summary>
+public sealed record LicenseRequirement(string Name, IReadOnlyList<string> Alternatives);
+
+/// <summary>면허 제한 한 그룹. 그룹 안의 면허는 "그리고"(모두 필요), 그룹끼리는 "또는"(한 그룹만 갖추면 됨)으로 본다.</summary>
+public sealed record LicenseGroup(int GroupNo, IReadOnlyList<LicenseRequirement> Items);
 
 /// <summary>기초금액 원문의 비용 항목 하나. InAValue면 A값에 더한 항목이다.</summary>
 public sealed record CostItem(string Label, long Amount, bool InAValue);

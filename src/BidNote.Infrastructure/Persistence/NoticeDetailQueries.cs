@@ -67,7 +67,7 @@ public sealed class NoticeDetailQueries(BidNoteDbContext db) : INoticeDetailQuer
             DetailUrl = n.DetailUrl,
             LastCheckedAt = n.LastCheckedAt,
             Licenses = [.. n.Licenses.GroupBy(l => l.GroupNo).OrderBy(g => g.Key)
-                .Select(g => new LicenseGroup(g.Key, [.. g.OrderBy(l => l.Id).Select(l => l.Name)]))],
+                .Select(g => new LicenseGroup(g.Key, [.. g.OrderBy(l => l.Id).Select(l => new LicenseRequirement(l.Name, l.AlternativeNames))]))],
             Changes = NoticeHistoryDiff.Build(histories, CollectService.SnapshotJson(n)),
             Extras = raw is null ? [] : Extras(raw),
             CostItems = priceRaw is null ? [] : CostItemsOf(priceRaw),

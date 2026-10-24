@@ -20,6 +20,45 @@ public static class DatabaseInitializer
         if (purgeFakeData) await PurgeFakeDataAsync(db, logger, cancellationToken).ConfigureAwait(false);
         await RestoreWipedBasePricesAsync(db, logger, cancellationToken).ConfigureAwait(false);
         await ShortenRegionNamesAsync(db, logger, cancellationToken).ConfigureAwait(false);
+        await FillLicenseAlternativesAsync(db, logger, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 면허 제한 줄의 허용 업종(2026-10-25 추가)을 저장된 공고 원문에서 읽어 채운다.
+    /// 아직 읽지 않은 줄(Alternatives = null)만 다루므로 한 번 채우면 다시 돌지 않는다. 원문이 없으면 빈 값으로 둔다.
+    /// </summary>
+    public static async Task<int> FillLicenseAlternativesAsync(BidNoteDbContext db, ILogger logger, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        var rows = await db.NoticeLicenses.Include(x => x.Notice).Where(x => x.Alternatives == null)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        if (rows.Count == 0) return 0;
+
+        int filled = 0;
+        foreach (var notice in rows.GroupBy(x => x.Notice!))
+        {
+            string? raw = await db.ApiRawResponses.AsNoTracking()
+                .Where(r => r.SourceSystem == notice.Key.SourceSystem && r.BidNo == notice.Key.BidNo && r.ApiName == G2BCollector.ListApi)
+                .OrderByDescending(r => r.Id).Select(r => r.ResponseJson).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+            var fromRaw = new Dictionary<(int, string), string>();
+            if (raw is not null)
+            {
+                using var doc = JsonDocument.Parse(raw);
+                if (doc.RootElement.TryGetProperty("licenses", out var list) && list.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var l in list.EnumerateArray().Select(G2BCollector.MapLicense))
+                        fromRaw[(l.GroupNo, l.Name)] = NoticeLicense.JoinAlternatives(l.Alternatives ?? []);
+                }
+            }
+            foreach (var row in notice)
+            {
+                row.Alternatives = fromRaw.GetValueOrDefault((row.GroupNo, row.Name), "");
+                if (row.Alternatives.Length > 0) filled++;
+            }
+        }
+        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        logger.LogInformation("면허 제한 {Rows}줄의 허용 업종을 원문에서 읽었습니다 (허용 업종 있음 {Filled}줄).", rows.Count, filled);
+        return filled;
     }
 
     /// <summary>예전에 "대전광역시"처럼 긴 이름으로 저장한 지역을 짧은 이름("대전")으로 고친다.</summary>

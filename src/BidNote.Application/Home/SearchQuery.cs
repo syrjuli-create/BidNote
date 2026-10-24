@@ -25,6 +25,7 @@ public static class SearchQuery
         Add("due", int.TryParse(First(values, "due"), out int due) && due >= 0 ? due.ToString(System.Globalization.CultureInfo.InvariantCulture) : null);
         Add("corrected", Flag(values, "corrected"));
         Add("new", Flag(values, "new"));
+        Add("mine", Flag(values, "mine"));
         Add("sort", First(values, "sort") is "amount" or "new" ? First(values, "sort") : null);
         return string.Join("&", parts);
     }
@@ -43,6 +44,7 @@ public static class SearchQuery
         items.AddRange(First(values, "due") switch { "0" => ["오늘 마감"], "1" => ["내일까지"], { } d => [$"{d}일 이내"], _ => Array.Empty<string>() });
         if (values.ContainsKey("corrected")) items.Add("정정만");
         if (values.ContainsKey("new")) items.Add("새 공고만");
+        if (values.ContainsKey("mine")) items.Add("내 면허");
         items.AddRange(First(values, "sort") switch { "amount" => ["금액 높은순"], "new" => ["최신 공고순"], _ => Array.Empty<string>() });
         return items;
     }

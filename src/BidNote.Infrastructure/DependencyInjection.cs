@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<BidNote.Application.Favorites.IFavoriteStore, FavoriteStore>();
         services.AddScoped<BidNote.Application.Bidding.IMyBidStore, MyBidStore>();
         services.AddScoped<ISavedSearchStore, SavedSearchStore>();
+        services.AddScoped<BidNote.Application.Company.ICompanyStore, CompanyStore>();
         services.AddScoped<BidNote.Application.Results.IBidResultService, BidResultService>();
         services.AddSingleton(new StorageLocation(dbPath));
         services.AddScoped<ICollectStatsQueries, CollectStatsQueries>();
