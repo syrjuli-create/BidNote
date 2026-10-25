@@ -3,6 +3,7 @@ using System.Text;
 using BidNote.Application.Collecting;
 using BidNote.Application.Results;
 using BidNote.Domain.Collecting;
+using BidNote.Domain.Company;
 using BidNote.Domain.Notices;
 using BidNote.Domain.Results;
 using Microsoft.EntityFrameworkCore;
@@ -136,7 +137,10 @@ public sealed class BidResultService(
         return true;
     }
 
-    public async Task<int> FetchPendingRanksAsync(int max, CancellationToken cancellationToken)
+    /// <summary>경쟁사 성향용으로 순위를 받을 공고를 고르는 기간 (최근 개찰).</summary>
+    public static readonly TimeSpan CompetitorWindow = TimeSpan.FromDays(30);
+
+    public async Task<int> FetchPendingRanksAsync(int max, int competitorMax, CancellationToken cancellationToken)
     {
         List<int> ids;
         await using (var db = await factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
@@ -148,11 +152,39 @@ public sealed class BidResultService(
                 .Select(r => r.NoticeId)
                 .Take(max)
                 .ToListAsync(cancellationToken).ConfigureAwait(false);
+            if (competitorMax > 0)
+                ids.AddRange(await CompetitorCandidatesAsync(db, ids, competitorMax, cancellationToken).ConfigureAwait(false));
         }
         int fetched = 0;
         foreach (int id in ids)
             if (await FetchRanksAsync(id, cancellationToken).ConfigureAwait(false)) fetched++;
         return fetched;
+    }
+
+    /// <summary>
+    /// 경쟁사 성향을 쌓을 공고: 최근 개찰했고 순위를 아직 받지 않았으며 내 면허로 참여할 수 있었던 공고(면허만 본다), 최근 개찰순.
+    /// 면허를 등록하지 않았으면 고르지 않는다.
+    /// </summary>
+    private async Task<List<int>> CompetitorCandidatesAsync(BidNoteDbContext db, IReadOnlyCollection<int> exclude, int max, CancellationToken cancellationToken)
+    {
+        var mine = (await db.CompanyLicenses.AsNoTracking().Select(x => x.Name).ToListAsync(cancellationToken).ConfigureAwait(false))
+            .ToHashSet(StringComparer.Ordinal);
+        if (mine.Count == 0) return [];
+        DateTime since = timeProvider.GetLocalNow().DateTime - CompetitorWindow;
+        var recent = await db.BidResults.AsNoTracking()
+            .Where(r => r.RanksFetchedAt == null && r.ParticipantCount > 0 && r.Status.Contains("개찰완료") && r.OpenedAt >= since && !exclude.Contains(r.NoticeId))
+            .OrderByDescending(r => r.OpenedAt)
+            .Select(r => r.NoticeId)
+            .Take(1000)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var rows = await db.NoticeLicenses.AsNoTracking().Where(l => recent.Contains(l.NoticeId))
+            .Select(l => new { l.NoticeId, l.GroupNo, l.Name, l.Alternatives })
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var eligible = rows.GroupBy(r => r.NoticeId)
+            .Where(g => LicenseEligibility.Check(g.Select(r => new LicenseRow(r.GroupNo, r.Name, NoticeLicense.SplitAlternatives(r.Alternatives))), mine).Kind == EligibilityKind.Eligible)
+            .Select(g => g.Key)
+            .ToHashSet();
+        return [.. recent.Where(eligible.Contains).Take(max)];
     }
 
     public async Task<BidResultView?> GetAsync(int noticeId, int top, CancellationToken cancellationToken)

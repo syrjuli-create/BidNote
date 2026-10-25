@@ -2,6 +2,7 @@
 <nav class="minetabs" aria-label="내 입찰">
     <a href="/mine" class="@(Current == "favorites" ? "on" : "")" aria-current="@(Current == "favorites" ? "page" : null)">관심 공고</a>
     <a href="/mine/bids" class="@(Current == "bids" ? "on" : "")" aria-current="@(Current == "bids" ? "page" : null)">내 투찰 기록</a>
+    <a href="/mine/competitors" class="@(Current == "competitors" ? "on" : "")" aria-current="@(Current == "competitors" ? "page" : null)">경쟁사 투찰 성향</a>
 </nav>
 
 @code {

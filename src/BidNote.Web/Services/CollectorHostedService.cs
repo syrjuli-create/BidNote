@@ -54,6 +54,13 @@ public sealed class CollectorHostedService(
     /// <summary>한 번 수집할 때 순위를 받아 둘 내 투찰·관심 공고 수. 공고마다 2번 이상 호출하므로 적게 둔다.</summary>
     private const int PendingRanksPerRun = 10;
 
+    /// <summary>
+    /// 경쟁사 성향용으로 한 번 수집할 때 더 받을 공고 수. 참가 3천 곳 넘는 공고는 한 건에 4번 호출하므로,
+    /// 하루 호출 한도를 경쟁사 쪽이 다 써서 내 투찰 공고 순위를 못 받는 일이 없게, 또 순위 줄(공고당 수천 줄)로 DB가 빨리 커지지 않게 적게 둔다.
+    /// 10분 주기면 하루 약 140건.
+    /// </summary>
+    private const int CompetitorRanksPerRun = 1;
+
     private async Task<bool> RunAsync(DateTime from, DateTime to, string trigger, int backfillDays, CancellationToken stoppingToken)
     {
         try
@@ -92,7 +99,7 @@ public sealed class CollectorHostedService(
             from = CollectorRules.CatchUpFrom(from, to, settings.ResultsLastSuccessTo, await results.HasAnyAsync(stoppingToken), backfillDays);
             int updated = await results.CollectOpeningsAsync(from, to, stoppingToken);
             await settingsStore.MarkResultsSuccessAsync(to, stoppingToken);
-            int ranks = await results.FetchPendingRanksAsync(PendingRanksPerRun, stoppingToken);
+            int ranks = await results.FetchPendingRanksAsync(PendingRanksPerRun, CompetitorRanksPerRun, stoppingToken);
             logger.LogInformation("개찰 결과: {From:yyyy-MM-dd HH:mm}~{To:yyyy-MM-dd HH:mm} 반영 {Updated}건, 순위 받음 {Ranks}건", from, to, updated, ranks);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

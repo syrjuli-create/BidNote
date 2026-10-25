@@ -1,0 +1,116 @@
+@page "/mine/competitors"
+@using System.Globalization
+@using BidNote.Application.Results
+@inject ICompetitorQueries Queries
+
+<PageTitle>경쟁사 투찰 성향 · 입찰노트</PageTitle>
+
+<div class="stack favs">
+    <MineTabs Current="competitors" />
+    <div class="listhead">
+        <h1>경쟁사 투찰 성향 <span class="tsub" style="display:inline">순위를 받은 공고 @(overview?.NoticeCount.ToString("N0", Ko) ?? "0")건 · 업체 @(overview?.CompanyCount.ToString("N0", Ko) ?? "0")곳</span></h1>
+    </div>
+
+    <form method="get" action="/mine/competitors" class="row compsearch">
+        <input class="in" type="text" name="q" value="@Q" placeholder="업체명으로 찾기" aria-label="업체명" />
+        <label class="f">최소
+            <select class="in" name="min">
+                @foreach (int m in MinChoices)
+                {
+                    <option value="@m" selected="@(MinMeetings == m)">@(m)번 이상 만남</option>
+                }
+            </select>
+        </label>
+        <button class="btn" type="submit">보기</button>
+    </form>
+
+    @if (overview is null || overview.NoticeCount == 0)
+    {
+        <div class="empty">
+            아직 업체별 순위를 받은 공고가 없습니다. 공고 상세에서 개찰 결과를 열거나, <a href="/me">내 정보</a>에 면허를 등록해 두면
+            수집할 때마다 내 면허로 참여할 수 있었던 최근 공고의 순위를 조금씩 받아 쌓습니다.
+        </div>
+    }
+    else if (overview.Companies.Count == 0)
+    {
+        <div class="empty">조건에 맞는 업체가 없습니다. 최소 만난 횟수를 낮춰 보세요.</div>
+    }
+    else
+    {
+        var (lo, hi) = Scale(overview.Companies);
+        <div class="tbl">
+            <table class="complist">
+                <thead>
+                    <tr><th>업체</th><th class="r">만난 공고</th><th class="r">1순위</th><th>보통 쓰는 사정률 <span class="tsub" style="display:inline">(가운데 절반 · 가운데 값)</span></th><th>마지막</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in overview.Companies)
+                    {
+                        <tr>
+                            <td class="namecol"><a class="tname" href="/mine/competitors/@c.BizNo">@c.Name</a><span class="tsub num">@BizText(c.BizNo)</span></td>
+                            <td class="r num">@c.Meetings</td>
+                            <td class="r num">@(c.Wins > 0 ? c.Wins.ToString(Ko) : "-")</td>
+                            <td>
+                                @if (c.MedianRate is { } med && c.LowRate is { } low && c.HighRate is { } high)
+                                {
+                                    <div class="rangecell">
+                                        <span class="rangebar" role="img" aria-label="@($"{Rate(low)} ~ {Rate(high)}, 가운데 {Rate(med)}")">
+                                            <span class="band" style="left:@Pos(low, lo, hi)%;width:@Width(low, high, lo, hi)%"></span>
+                                            <span class="dot" style="left:@Pos(med, lo, hi)%"></span>
+                                        </span>
+                                        <span class="num">@Rate(low) ~ @Rate(high) <b>@Rate(med)</b></span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="tsub">기초금액을 몰라 계산 못 함</span>
+                                }
+                            </td>
+                            <td class="num nw">@(c.LastMetAt is { } t ? Display.ShortDateTime(t) : "-")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="tsub">
+            사정률은 투찰금액을 기초금액·A값·낙찰하한율로 거꾸로 계산한 값입니다. 막대는 그 업체가 써낸 값의 가운데 절반(25~75%), 점은 가운데 값이고,
+            모든 행이 같은 눈금(@Rate(lo) ~ @Rate(hi))을 씁니다. 하한 미달·예가 초과로 순위가 없는 투찰도 넣어 셉니다.
+            순위는 내 투찰·관심 공고와, 내 면허로 참여할 수 있었던 최근 공고에서 받아 쌓입니다.
+        </p>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "q")] public string? Q { get; set; }
+    [SupplyParameterFromQuery(Name = "min")] public int? Min { get; set; }
+
+    private static readonly CultureInfo Ko = CultureInfo.GetCultureInfo("ko-KR");
+    private static readonly int[] MinChoices = [1, 2, 3, 5, 10];
+    private const int Top = 100;
+
+    private CompetitorOverview? overview;
+    private int MinMeetings => Min is > 0 ? Min.Value : 2;
+
+    protected override async Task OnParametersSetAsync() =>
+        overview = await Queries.OverviewAsync(Q, MinMeetings, Top, CancellationToken.None);
+
+    private static string Rate(double r) => r.ToString("0.000", CultureInfo.InvariantCulture) + "%";
+
+    private static string BizText(string bizNo) => bizNo.Length == 10 ? $"{bizNo[..3]}-{bizNo[3..5]}-{bizNo[5..]}" : bizNo;
+
+    /// <summary>모든 행이 같은 눈금을 쓰도록 보이는 업체들의 범위로 정한다 (양끝 0.1%p 여유).</summary>
+    private static (double Lo, double Hi) Scale(IReadOnlyList<CompetitorSummary> rows)
+    {
+        var lows = rows.Where(r => r.LowRate is not null).Select(r => r.LowRate!.Value).ToList();
+        var highs = rows.Where(r => r.HighRate is not null).Select(r => r.HighRate!.Value).ToList();
+        if (lows.Count == 0) return (99, 101);
+        double lo = Math.Floor((lows.Min() - 0.1) * 10) / 10, hi = Math.Ceiling((highs.Max() + 0.1) * 10) / 10;
+        return hi - lo < 0.2 ? (lo - 0.1, hi + 0.1) : (lo, hi);
+    }
+
+    private static string Pos(double v, double lo, double hi) =>
+        Math.Clamp((v - lo) / (hi - lo) * 100, 0, 100).ToString("0.##", CultureInfo.InvariantCulture);
+
+    private static string Width(double a, double b, double lo, double hi) =>
+        Math.Max(1.5, Math.Clamp((b - a) / (hi - lo) * 100, 0, 100)).ToString("0.##", CultureInfo.InvariantCulture);
+}

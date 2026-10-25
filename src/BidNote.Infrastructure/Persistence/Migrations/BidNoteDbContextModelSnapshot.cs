@@ -612,6 +612,8 @@ namespace BidNote.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BizNo");
+
                     b.HasIndex("BidResultId", "Rank");
 
                     b.ToTable("BidResultRanks");

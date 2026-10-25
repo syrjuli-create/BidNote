@@ -271,9 +271,9 @@ public sealed class BidResultServiceTests : IDisposable
             db.SaveChanges();
         }
 
-        Assert.Equal(2, await service.FetchPendingRanksAsync(10, CancellationToken.None));
+        Assert.Equal(2, await service.FetchPendingRanksAsync(10, 0, CancellationToken.None));
         Assert.Equal(["FAV", "MINE"], source.RankCalls.Select(x => x.Split('-')[0]).Order());
-        Assert.Equal(0, await service.FetchPendingRanksAsync(10, CancellationToken.None));
+        Assert.Equal(0, await service.FetchPendingRanksAsync(10, 0, CancellationToken.None));
         Assert.NotNull((await service.GetAsync(other, 10, CancellationToken.None))?.Status);
     }
 

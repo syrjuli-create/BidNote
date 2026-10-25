@@ -1,0 +1,90 @@
+@page "/mine/competitors/{BizNo}"
+@using System.Globalization
+@using BidNote.Application.Results
+@inject ICompetitorQueries Queries
+
+<PageTitle>@(detail?.Summary.Name ?? "경쟁사") · 경쟁사 투찰 성향 · 입찰노트</PageTitle>
+
+<div class="stack favs">
+    <MineTabs Current="competitors" />
+    <a class="back" href="/mine/competitors">← 경쟁사 목록</a>
+
+    @if (detail is null)
+    {
+        <div class="empty">이 업체의 투찰 기록이 없습니다.</div>
+    }
+    else
+    {
+        var s = detail.Summary;
+        <div class="listhead"><h1>@s.Name <span class="tsub num" style="display:inline">@BizText(s.BizNo)</span></h1></div>
+
+        <dl class="kv tiles">
+            <div><dt>만난 공고</dt><dd class="num">@s.Meetings.ToString("N0", Ko)건</dd></div>
+            <div><dt>1순위</dt><dd class="num">@s.Wins.ToString("N0", Ko)번</dd></div>
+            <div><dt>가운데 값</dt><dd class="num">@Rate(s.MedianRate)</dd></div>
+            <div><dt>가운데 절반</dt><dd class="num">@Rate(s.LowRate) ~ @Rate(s.HighRate)</dd></div>
+        </dl>
+
+        @if (detail.Histogram.Count > 0)
+        {
+            int max = detail.Histogram.Max(b => b.Count);
+            <section class="panel">
+                <h2 class="sub">사정률 분포 <span class="tsub" style="display:inline">0.1%p 간격, 써낸 횟수</span></h2>
+                <div class="histo" role="img" aria-label="@($"{s.Name} 사정률 분포, 가운데 값 {Rate(s.MedianRate)}")">
+                    @foreach (var b in detail.Histogram)
+                    {
+                        <div class="hcol" data-tip="@($"{Rate(b.From)} ~ {Rate(b.To)}: {b.Count}번")" tabindex="0">
+                            <span class="hbar" style="height:@(b.Count == 0 ? "0" : Math.Max(2, b.Count * 100.0 / max).ToString("0.#", CultureInfo.InvariantCulture))%"></span>
+                        </div>
+                    }
+                </div>
+                <div class="haxis num">
+                    <span>@Rate(detail.Histogram[0].From)</span>
+                    <span>@Rate(detail.Histogram[detail.Histogram.Count / 2].From)</span>
+                    <span>@Rate(detail.Histogram[^1].To)</span>
+                </div>
+                <p class="tsub">막대에 마우스를 올리면 구간과 횟수가 보입니다. 드물게 아주 낮거나 높게 쓴 값(바깥 5%)은 양 끝 막대에 함께 셉니다. 아래 표에 같은 값이 공고별로 있습니다.</p>
+            </section>
+        }
+
+        <div class="tbl">
+            <table>
+                <thead>
+                    <tr><th>개찰</th><th>공고</th><th class="r">참가</th><th class="r">순위</th><th class="r">투찰금액</th><th class="r">사정률</th><th class="r">실제 사정률</th><th class="r">차이</th><th class="r">내 사정률</th><th>비고</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var b in detail.Bids)
+                    {
+                        <tr>
+                            <td class="num nw">@(b.OpenedAt is { } t ? Display.ShortDateTime(t) : "-")</td>
+                            <td class="namecol"><a class="tname" href="/notices/@b.NoticeId#result">@b.NoticeName</a></td>
+                            <td class="r num">@b.ParticipantCount.ToString("N0", Ko)</td>
+                            <td class="r num">@(b.Rank?.ToString(Ko) ?? "-")</td>
+                            <td class="r num">@(b.Amount is { } a ? Display.Won(a) : "-")</td>
+                            <td class="r num"><b>@Rate(b.AssessmentRate)</b></td>
+                            <td class="r num">@Rate(b.ActualRate)</td>
+                            <td class="r num">@(b.AssessmentRate is { } x && b.ActualRate is { } y ? (x - y).ToString("+0.000;-0.000;0", CultureInfo.InvariantCulture) + "%p" : "-")</td>
+                            <td class="r num">@Rate(b.MyRate)</td>
+                            <td class="tsub">@(b.Remark == "정상" ? "" : b.Remark)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="tsub">차이 = 이 업체의 사정률 − 실제 사정률. 실제 사정률은 개찰 결과의 예정가격 ÷ 기초금액입니다.</p>
+    }
+</div>
+
+@code {
+    [Parameter] public string BizNo { get; set; } = "";
+
+    private static readonly CultureInfo Ko = CultureInfo.GetCultureInfo("ko-KR");
+    private CompetitorDetail? detail;
+
+    protected override async Task OnParametersSetAsync() =>
+        detail = await Queries.GetAsync(BizNo, CancellationToken.None);
+
+    private static string Rate(double? r) => r is { } v ? v.ToString("0.000", CultureInfo.InvariantCulture) + "%" : "-";
+
+    private static string BizText(string bizNo) => bizNo.Length == 10 ? $"{bizNo[..3]}-{bizNo[3..5]}-{bizNo[5..]}" : bizNo;
+}

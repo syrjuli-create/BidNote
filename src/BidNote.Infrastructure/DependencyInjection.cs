@@ -25,7 +25,9 @@ public static class DependencyInjection
         services.AddScoped<ISavedSearchStore, SavedSearchStore>();
         services.AddScoped<BidNote.Application.Company.ICompanyStore, CompanyStore>();
         services.AddScoped<BidNote.Application.Results.IBidResultService, BidResultService>();
-        services.AddScoped<IRegionLimitService, RegionLimitService>(); services.AddSingleton(new StorageLocation(dbPath));
+        services.AddScoped<IRegionLimitService, RegionLimitService>();
+        services.AddScoped<BidNote.Application.Results.ICompetitorQueries, CompetitorQueries>();
+        services.AddSingleton(new StorageLocation(dbPath));
         services.AddScoped<ICollectStatsQueries, CollectStatsQueries>();
         services.AddScoped<BidNote.Application.Notices.INoticeDetailQueries, NoticeDetailQueries>();
         services.AddScoped<IApiUsageTracker, ApiUsageTracker>();

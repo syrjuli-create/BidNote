@@ -71,7 +71,9 @@ public sealed class BidNoteDbContext(DbContextOptions<BidNoteDbContext> options)
         });
         modelBuilder.Entity<BidResultRank>(e =>
         {
-            e.HasIndex(x => new { x.BidResultId, x.Rank }); e.Property(x => x.CompanyName).HasMaxLength(BidResultRank.MaxNameLength);
+            e.HasIndex(x => new { x.BidResultId, x.Rank });
+            e.HasIndex(x => x.BizNo); // 경쟁사 성향 (업체별 모아 보기)
+            e.Property(x => x.CompanyName).HasMaxLength(BidResultRank.MaxNameLength);
         });
         modelBuilder.Entity<CompanyProfile>(e =>
         {
