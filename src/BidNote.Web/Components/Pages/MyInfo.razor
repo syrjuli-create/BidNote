@@ -29,7 +29,7 @@
                 <div class="tbl">
                     <table class="licamounts">
                         <thead>
-                            <tr><th>면허</th><th class="r">시공능력평가액(억)</th><th class="r">최근 실적 합계(억)</th><th class="r">실적 배수</th><th class="r">금액 상한</th><th></th></tr>
+                            <tr><th>면허</th><th class="r">시공능력평가액(억)</th><th class="r">최근 실적 합계(억)</th><th class="r">실적 배수</th><th class="r">금액 상한</th><th>주력분야 (쉼표로 구분)</th><th></th></tr>
                         </thead>
                         <tbody>
                             @foreach (var l in info.Licenses)
@@ -41,6 +41,13 @@
                                     <td class="r"><input class="in num" inputmode="decimal" aria-label="@(l.Name) 최근 실적 합계(억 원)" placeholder="예: 120" @bind="d.Performance" /></td>
                                     <td class="r"><input class="in num" inputmode="decimal" aria-label="@(l.Name) 실적 배수" placeholder="예: 1" @bind="d.Multiple" /></td>
                                     <td class="r num">@(l.AmountLimit is { } limit ? Display.Eok(limit) : "-")</td>
+                                    <td>
+                                        <input class="in mainfields" aria-label="@(l.Name) 주력분야" placeholder="예: 포장공사" @bind="d.MainFields" />
+                                        @if (mainFieldOptions.TryGetValue(l.Name, out var seen) && seen.Count > 0)
+                                        {
+                                            <span class="tsub">공고에 나온 것: @string.Join(", ", seen.Take(6))</span>
+                                        }
+                                    </td>
                                     <td class="nw">
                                         <button type="button" class="pill" disabled="@busy" @onclick="() => SaveAmountsAsync(l.Name)">저장</button>
                                         <button type="button" class="pill danger" aria-label="@(l.Name) 빼기" disabled="@busy" @onclick="() => RemoveAsync(l.Name)">빼기</button>
@@ -50,7 +57,7 @@
                         </tbody>
                     </table>
                 </div>
-                <p class="tsub">금액 상한 = 시공능력평가액과 "실적 ÷ 실적 배수" 중 작은 값입니다(넣은 값만으로 계산). 공고 추정가격이 이 상한을 넘으면 참여 가능에서 뺍니다. 실적 배수는 발주처·금액대마다 다르니 공고문·적격심사 기준을 보고 넣으세요. 금액을 비우면 면허만 따집니다.</p>
+                <p class="tsub">금액 상한 = 시공능력평가액과 "실적 ÷ 실적 배수" 중 작은 값입니다(넣은 값만으로 계산). 공고 추정가격이 이 상한을 넘으면 참여 가능에서 뺍니다. 실적 배수는 발주처·금액대마다 다르니 공고문·적격심사 기준을 보고 넣으세요. 금액을 비우면 면허만 따집니다. 주력분야는 공고 상세에 맞는지만 알려 주고 참여 가능에서 빼지는 않습니다.</p>
             }
             <div class="row" style="margin-top:12px">
                 <input class="in" list="license-options" placeholder="면허 이름 (예: 지반조성ㆍ포장공사업)" aria-label="추가할 면허"
@@ -68,13 +75,48 @@
             @if (summary is { } s && info.HasLicenses)
             {
                 <dl class="kv" style="margin-top:12px">
-                    <div class="big"><dt>내 면허·금액으로 참여 가능</dt><dd class="num"><a href="/?mine=true">진행 공고 @s.Eligible.ToString("N0", CultureInfo.InvariantCulture)건 보기 →</a></dd></div>
-                    <div><dt>면허는 맞지만 금액 상한 초과</dt><dd class="num">@s.OverLimit.ToString("N0", CultureInfo.InvariantCulture)건</dd></div>
-                    <div><dt>면허가 맞지 않는 공고</dt><dd class="num">@s.NotEligible.ToString("N0", CultureInfo.InvariantCulture)건</dd></div>
-                    <div><dt>면허 제한 정보 없음</dt><dd class="num">@s.Unknown.ToString("N0", CultureInfo.InvariantCulture)건</dd></div>
+                    <div class="big"><dt>내 면허·금액·지역으로 참여 가능</dt><dd class="num"><a href="/?mine=true">진행 공고 @N(s.Eligible)건 보기 →</a>@if (s.RegionUnknown > 0) {<span class="tsub"> (그중 @N(s.RegionUnknown)건은 소재지 확인 필요)</span>}@if (s.MainFieldMismatch > 0) {<span class="tsub"> (그중 @N(s.MainFieldMismatch)건은 주력분야가 다름)</span>}</dd></div>
+                    <div><dt>면허는 맞지만 금액 상한 초과</dt><dd class="num">@N(s.OverLimit)건</dd></div>
+                    <div><dt>면허·금액은 맞지만 참가 가능 지역 밖</dt><dd class="num">@N(s.OutsideRegion)건</dd></div>
+                    <div><dt>면허가 맞지 않는 공고</dt><dd class="num">@N(s.NotEligible)건</dd></div>
+                    <div><dt>면허 제한 정보 없음</dt><dd class="num">@N(s.Unknown)건</dd></div>
                 </dl>
-                <p class="tsub">공고의 면허 제한 중 한 줄(그룹)의 면허를 모두 갖추면 면허는 맞는 것으로 봅니다. 토목건축공사업처럼 대신 인정하는 업종도 따집니다. 금액은 공고 추정가격을 금액 상한과 비교합니다(추정가격이 없는 공고는 면허만 봄). 주력분야·지역 제한은 따지지 않습니다.</p>
+                <p class="tsub">공고의 면허 제한 중 한 줄(그룹)의 면허를 모두 갖추면 면허는 맞는 것으로 봅니다. 토목건축공사업처럼 대신 인정하는 업종도 따집니다. 금액은 공고 추정가격을 금액 상한과 비교하고(추정가격이 없으면 면허만 봄), 지역은 공고의 참가 가능 지역 중 한 곳에 본사나 지사가 있는지 봅니다. 판단할 수 없는 것은 빼지 않습니다.</p>
             }
+        }
+    </section>
+
+    <section class="panel">
+        <h2 class="sub">본사·지사 소재지</h2>
+        @if (info is not null)
+        {
+            @if (info.Locations.Count == 0)
+            {
+                <p class="tsub">아직 없습니다. 공고의 참가 가능 지역은 대부분 시군구 단위라 "충청북도 충주시"처럼 시군구까지 넣어야 정확히 판정합니다.</p>
+            }
+            else
+            {
+                <div class="licenses">
+                    @foreach (var l in info.Locations)
+                    {
+                        <span class="lic">@l.Name@(l.IsHeadOffice ? " (본사)" : "") <button type="button" class="x" aria-label="@(l.Name) 빼기" disabled="@busy" @onclick="() => RemoveLocationAsync(l.Name)">×</button></span>
+                    }
+                </div>
+            }
+            <div class="row" style="margin-top:12px">
+                <input class="in" list="location-options" placeholder="소재지 (예: 충청북도 충주시)" aria-label="추가할 소재지"
+                       maxlength="@CompanyLocation.MaxNameLength" @bind="newLocation" @bind:event="oninput" @onkeyup="OnLocationKeyUpAsync" />
+                <label class="check"><input type="checkbox" @bind="newLocationIsHead" /> 본사</label>
+                <button type="button" class="btn" disabled="@(busy || newLocation.Trim().Length == 0)" @onclick="AddLocationAsync">추가</button>
+            </div>
+            <datalist id="location-options">
+                @foreach (var o in locationOptions.Where(o => info.Locations.All(l => l.Name != o.Name)))
+                {
+                    <option value="@o.Name">진행 공고 @(o.OpenNoticeCount)건</option>
+                }
+            </datalist>
+            @if (locationStatus.Length > 0) { <p class="tsub" role="status">@locationStatus</p> }
+            <p class="tsub">공고의 지역 제한 판단 기준은 대부분 "본사 또는 참여 지사 소재지"라 지사도 넣을 수 있습니다. 목록은 진행 공고의 참가 가능 지역에 나온 이름입니다.</p>
         }
     </section>
 
@@ -83,31 +125,24 @@
         <div class="formgrid">
             <label class="f">회사명<input class="in" maxlength="@CompanyProfile.MaxNameLength" @bind="form.Name" /></label>
             <label class="f">사업자번호<input class="in" inputmode="numeric" placeholder="000-00-00000" maxlength="@CompanyProfile.MaxBizNoLength" @bind="form.BizNo" /></label>
-            <label class="f">소재지
-                <select class="in" @bind="form.Region">
-                    <option value="">선택 안 함</option>
-                    @foreach (string r in Regions)
-                    {
-                        <option value="@r">@r</option>
-                    }
-                </select>
-            </label>
             <label class="f">이메일<input class="in" type="email" maxlength="@CompanyProfile.MaxEmailLength" @bind="form.Email" /></label>
         </div>
         <div class="row" style="margin-top:12px">
             <button type="button" class="btn" disabled="@busy" @onclick="SaveProfileAsync">저장</button>
             <span class="tsub" style="display:inline" role="status">@profileStatus</span>
         </div>
-        <p class="tsub">이 PC의 DB에만 저장합니다. 주민등록번호 같은 개인 식별 정보는 받지 않습니다. 소재지는 다음 단계(지역 제한 판정)에 씁니다.</p>
+        <p class="tsub">이 PC의 DB에만 저장합니다. 주민등록번호 같은 개인 식별 정보는 받지 않습니다.</p>
     </section>
 </div>
 
 @code {
-    // "전남·광주" 같은 묶음 이름은 소재지로 고를 일이 없어 뺀다.
-    private static readonly string[] Regions = [.. RegionNames.LongNames.Select(RegionNames.ToShort).Where(x => !x.Contains('·')).Distinct()];
-
     private CompanyInfo? info;
     private IReadOnlyList<LicenseOption> options = [];
+    private IReadOnlyList<LocationOption> locationOptions = [];
+    private string newLocation = "", locationStatus = "";
+    private bool newLocationIsHead;
+
+    private static string N(int n) => n.ToString("N0", CultureInfo.InvariantCulture);
     private EligibilitySummary? summary;
     private Form form = new();
     private string newLicense = "", licenseStatus = "", profileStatus = "";
@@ -127,7 +162,10 @@
         public string Capacity { get; set; } = "";
         public string Performance { get; set; } = "";
         public string Multiple { get; set; } = "";
+        public string MainFields { get; set; } = "";
     }
+
+    private IReadOnlyDictionary<string, IReadOnlyList<string>> mainFieldOptions = new Dictionary<string, IReadOnlyList<string>>();
 
     private const decimal Eok = 100_000_000m;
     private readonly Dictionary<string, AmountDraft> drafts = new(StringComparer.Ordinal);
@@ -141,6 +179,7 @@
                 Capacity = l.CapacityAmount is { } c ? (c / Eok).ToString("0.####", CultureInfo.InvariantCulture) : "",
                 Performance = l.PerformanceAmount is { } p ? (p / Eok).ToString("0.####", CultureInfo.InvariantCulture) : "",
                 Multiple = l.PerformanceMultiple is { } m ? m.ToString("0.##", CultureInfo.InvariantCulture) : "",
+                MainFields = string.Join(", ", l.MainFields),
             };
             drafts[l.Name] = d;
         }
@@ -171,6 +210,7 @@
             capacity is { } c ? (long)Math.Round(c * Eok) : null,
             performance is { } p ? (long)Math.Round(p * Eok) : null,
             multiple is { } m ? (double)m : null), CancellationToken.None);
+        await Store.SaveLicenseMainFieldsAsync(name, d.MainFields.Split([',', '，'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), CancellationToken.None);
         drafts.Remove(name);
         await LoadAsync();
         var saved = info!.Licenses.First(x => x.Name == name);
@@ -185,6 +225,41 @@
         await LoadAsync();
         form = new Form { Name = info!.Name, BizNo = info.BizNo, Region = info.Region, Email = info.Email };
         options = await Store.LicenseOptionsAsync(Clock.GetLocalNow().DateTime, CancellationToken.None);
+        locationOptions = await Store.LocationOptionsAsync(Clock.GetLocalNow().DateTime, CancellationToken.None);
+        mainFieldOptions = await Store.MainFieldOptionsAsync(Clock.GetLocalNow().DateTime, CancellationToken.None);
+        newLocationIsHead = info.Locations.Count == 0;
+    }
+
+    private async Task OnLocationKeyUpAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !busy && newLocation.Trim().Length > 0) await AddLocationAsync();
+    }
+
+    private async Task AddLocationAsync()
+    {
+        busy = true;
+        string name = newLocation.Trim();
+        // 시도로만 제한하는 공고가 많아 "대전광역시 서구"는 목록에 없어도 "대전광역시"가 있으면 맞는 이름으로 본다.
+        string province = name.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+        bool known = locationOptions.Any(o => o.Name == name || o.Name == province || o.Name.StartsWith(province + " ", StringComparison.Ordinal));
+        bool added = await Store.AddLocationAsync(name, newLocationIsHead, CancellationToken.None);
+        locationStatus = !added ? $"'{name}'은(는) 이미 있습니다."
+            : !name.Contains(' ') ? $"'{name}'을(를) 넣었습니다. 시도만 넣으면 시군구로 제한한 공고는 판단할 수 없으니 시군구까지 넣어 주세요."
+            : known ? $"'{name}'을(를) 넣었습니다."
+            : $"'{name}'을(를) 넣었습니다. 진행 공고의 참가 가능 지역에 없는 이름이니 나라장터 표기(예: 강원특별자치도 원주시)와 같은지 확인하세요.";
+        newLocation = "";
+        await LoadAsync();
+        newLocationIsHead = info!.Locations.Count == 0;
+        busy = false;
+    }
+
+    private async Task RemoveLocationAsync(string name)
+    {
+        busy = true;
+        await Store.RemoveLocationAsync(name, CancellationToken.None);
+        locationStatus = $"'{name}'을(를) 뺐습니다.";
+        await LoadAsync();
+        busy = false;
     }
 
     private async Task LoadAsync()

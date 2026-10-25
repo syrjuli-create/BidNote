@@ -68,8 +68,11 @@ public interface IBidResultService
     /// <summary>공고 하나의 업체별 순위와 예정가격을 받아 저장한다. 받을 결과가 없으면 false.</summary>
     Task<bool> FetchRanksAsync(int noticeId, CancellationToken cancellationToken);
 
-    /// <summary>내 투찰 기록·관심 공고 중 순위를 아직 받지 않은 것을 최대 <paramref name="max"/>건 받는다.</summary>
-    Task<int> FetchPendingRanksAsync(int max, CancellationToken cancellationToken);
+    /// <summary>
+    /// 내 투찰 기록·관심 공고 중 순위를 아직 받지 않은 것을 최대 <paramref name="max"/>건 받고, 이어서 경쟁사 성향용으로
+    /// 최근 개찰한 공고 중 내 면허로 참여할 수 있었던 것을 최대 <paramref name="competitorMax"/>건 더 받는다.
+    /// </summary>
+    Task<int> FetchPendingRanksAsync(int max, int competitorMax, CancellationToken cancellationToken);
 
     /// <summary>상세 화면용 개찰 결과. 순위는 앞에서 <paramref name="top"/>개만 준다. 결과가 없으면 null.</summary>
     Task<BidResultView?> GetAsync(int noticeId, int top, CancellationToken cancellationToken);

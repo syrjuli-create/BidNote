@@ -25,12 +25,14 @@ public sealed class NoticeDetailQueries(BidNoteDbContext db) : INoticeDetailQuer
 
     public async Task<NoticeDetail?> GetAsync(int id, CancellationToken cancellationToken)
     {
-        var n = await db.Notices.AsNoTracking().Include(x => x.Licenses).Include(x => x.Histories).AsSplitQuery()
+        var n = await db.Notices.AsNoTracking().Include(x => x.Licenses).Include(x => x.Histories).Include(x => x.RegionLimits).AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken).ConfigureAwait(false);
         if (n is null) return null;
 
+        // 공고 목록 원문만 읽는다. 같은 공고번호로 기초금액·개찰 결과·참가 가능 지역 원문도 쌓이므로 "가장 최근 원문"을 쓰면 안 된다.
         string? raw = await db.ApiRawResponses.AsNoTracking()
-            .Where(r => r.SourceSystem == n.SourceSystem && r.BusinessType == n.BusinessType && r.BidNo == n.BidNo && r.ApiName != G2BCollector.BasePriceApi)
+            .Where(r => r.SourceSystem == n.SourceSystem && r.BusinessType == n.BusinessType && r.BidNo == n.BidNo
+                && (r.ApiName == G2BCollector.ListApi || r.ApiName == FakeG2BCollector.ApiName))
             .OrderByDescending(r => r.Id).Select(r => r.ResponseJson).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
 
         string? priceRaw = await db.ApiRawResponses.AsNoTracking()
@@ -68,7 +70,8 @@ public sealed class NoticeDetailQueries(BidNoteDbContext db) : INoticeDetailQuer
             DetailUrl = n.DetailUrl,
             LastCheckedAt = n.LastCheckedAt,
             Licenses = [.. n.Licenses.GroupBy(l => l.GroupNo).OrderBy(g => g.Key)
-                .Select(g => new LicenseGroup(g.Key, [.. g.OrderBy(l => l.Id).Select(l => new LicenseRequirement(l.Name, l.AlternativeNames))]))],
+                .Select(g => new LicenseGroup(g.Key, [.. g.OrderBy(l => l.Id).Select(l => new LicenseRequirement(l.Name, l.AlternativeNames) { MainFields = l.MainFieldGroups })]))],
+            RegionLimits = [.. n.RegionLimits.OrderBy(r => r.Id).Select(r => r.Name)],
             Changes = NoticeHistoryDiff.Build(histories, CollectService.SnapshotJson(n)),
             Extras = raw is null ? [] : Extras(raw),
             CostItems = priceRaw is null ? [] : CostItemsOf(priceRaw),

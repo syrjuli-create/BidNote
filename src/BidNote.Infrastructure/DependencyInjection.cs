@@ -25,6 +25,8 @@ public static class DependencyInjection
         services.AddScoped<ISavedSearchStore, SavedSearchStore>();
         services.AddScoped<BidNote.Application.Company.ICompanyStore, CompanyStore>();
         services.AddScoped<BidNote.Application.Results.IBidResultService, BidResultService>();
+        services.AddScoped<IRegionLimitService, RegionLimitService>();
+        services.AddScoped<BidNote.Application.Results.ICompetitorQueries, CompetitorQueries>();
         services.AddSingleton(new StorageLocation(dbPath));
         services.AddScoped<ICollectStatsQueries, CollectStatsQueries>();
         services.AddScoped<BidNote.Application.Notices.INoticeDetailQueries, NoticeDetailQueries>();
@@ -44,6 +46,7 @@ public static class DependencyInjection
         {
             services.AddScoped<IBidCollector, FakeG2BCollector>();
             services.AddScoped<BidNote.Application.Results.IBidResultSource, FakeResultSource>();
+            services.AddScoped<IRegionLimitSource, FakeRegionLimitSource>();
         }
         else
         {
@@ -56,6 +59,7 @@ public static class DependencyInjection
             });
             services.AddScoped<IBidCollector, G2BCollector>();
             services.AddScoped<BidNote.Application.Results.IBidResultSource, G2BResultSource>();
+            services.AddScoped<IRegionLimitSource, G2BRegionLimitSource>();
         }
 
         return services;

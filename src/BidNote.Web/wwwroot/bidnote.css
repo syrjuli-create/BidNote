@@ -214,6 +214,26 @@ main { max-width: 1240px; margin: 0 auto; padding: 28px 24px 72px; }
 .licenses .lic { display: inline-flex; align-items: center; gap: 4px; background: var(--brand-soft); color: var(--brand); font-weight: 600; font-size: 13.5px; padding: 4px 4px 4px 10px; border-radius: 8px; }
 .licenses .x { border: 0; background: none; color: inherit; font-size: 16px; line-height: 1; cursor: pointer; padding: 0 4px; }
 .licenses .x:hover { color: var(--hot); }
+.compsearch { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.compsearch > .in { max-width: 260px; }
+.compsearch .f .in { width: auto; }
+.rangecell { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.rangebar { position: relative; flex: none; width: 160px; height: 12px; background: var(--bg); border-radius: 999px; }
+.rangebar .band { position: absolute; top: 2px; bottom: 2px; background: var(--brand-soft); border: 1px solid var(--brand); border-radius: 999px; }
+.rangebar .dot { position: absolute; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; background: var(--brand); border-radius: 50%; box-shadow: 0 0 0 2px var(--surface); }
+.kv.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.kv.tiles > div { display: block; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.kv.tiles dt { font-size: 12px; color: var(--muted); }
+.kv.tiles dd { margin: 4px 0 0; font-size: 18px; font-weight: 700; }
+.histo { display: flex; align-items: flex-end; gap: 2px; height: 160px; padding-top: 28px; border-bottom: 1px solid var(--line); }
+.hcol { position: relative; flex: 1 1 0; min-width: 4px; height: 100%; display: flex; align-items: flex-end; outline: none; }
+.hbar { display: block; width: 100%; background: var(--brand); border-radius: 4px 4px 0 0; }
+.hcol:hover .hbar, .hcol:focus-visible .hbar { opacity: .75; }
+.hcol:hover::after, .hcol:focus-visible::after { content: attr(data-tip); position: absolute; bottom: calc(100% - 24px); left: 50%; transform: translateX(-50%); z-index: 2; pointer-events: none;
+    background: var(--ink); color: var(--surface); font-size: 12px; font-weight: 600; padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
+.haxis { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 4px; }
+.licamounts .in.mainfields { width: 180px; text-align: left; }
+.licamounts td .tsub { display: block; font-size: 12px; }
 .licamounts .in { width: 110px; font-size: 14px; padding: 6px 8px; text-align: right; }
 .licamounts .lic { background: var(--brand-soft); color: var(--brand); font-weight: 600; font-size: 13.5px; padding: 4px 10px; border-radius: 8px; white-space: nowrap; }
 .formgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }

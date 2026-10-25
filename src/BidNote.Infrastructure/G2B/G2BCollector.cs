@@ -151,7 +151,16 @@ public sealed class G2BCollector(G2BApiClient client, ILogger<G2BCollector> logg
 
     /// <summary>면허 제한 원문 한 줄. 허용 업종(permsnIndstrytyList)은 "[토목건축공사업/0003]"처럼 대괄호·코드가 붙어 온다.</summary>
     internal static CollectedLicense MapLicense(JsonElement row) =>
-        new(Int(row, "lmtGrpNo"), LicenseName(Str(row, "lcnsLmtNm")), LicenseList(Str(row, "permsnIndstrytyList")));
+        new(Int(row, "lmtGrpNo"), LicenseName(Str(row, "lcnsLmtNm")), LicenseList(Str(row, "permsnIndstrytyList")),
+            MainFieldList(Str(row, "indstrytyMfrcFldList")));
+
+    /// <summary>주력분야 "[1^토공사^포장공사],[2^도장공사]" → [[토공사, 포장공사], [도장공사]]. 앞의 번호는 버린다.</summary>
+    internal static IReadOnlyList<IReadOnlyList<string>> MainFieldList(string raw) =>
+        [.. raw.Split(']', StringSplitOptions.RemoveEmptyEntries)
+            .Select(chunk => chunk.Trim(' ', ',', '['))
+            .Select(chunk => chunk.Split('^', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Select(parts => (IReadOnlyList<string>)[.. parts.Length > 1 && int.TryParse(parts[0], out _) ? parts.Skip(1) : parts])
+            .Where(g => g.Count > 0)];
 
     /// <summary>"[A/0003], [B/0004]" 같은 업종 목록을 이름 목록으로 바꾼다.</summary>
     internal static IReadOnlyList<string> LicenseList(string raw) =>

@@ -85,7 +85,7 @@
             <label class="check"><input type="checkbox" name="new" value="true" checked="@(IsNew == true)" /> 최근 5일 새 공고만</label>
             @if (myEligible is { } eligible)
             {
-                <label class="check"><input type="checkbox" name="mine" value="true" checked="@(Mine == true)" /> 내 면허·금액으로 참여 가능 <span class="cnt">@eligible</span></label>
+                <label class="check"><input type="checkbox" name="mine" value="true" checked="@(Mine == true)" /> 내 면허·금액·지역으로 참여 가능 <span class="cnt">@eligible</span></label>
             }
             else
             {

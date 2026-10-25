@@ -203,6 +203,7 @@ public sealed class CollectService(
             GroupNo = l.GroupNo,
             Name = l.Name,
             Alternatives = NoticeLicense.JoinAlternatives(l.Alternatives ?? []),
+            MainFields = NoticeLicense.JoinMainFields(l.MainFields ?? []),
         }));
         // 나라장터 공고 목록에는 기초금액이 없다. 따로 받아 채운 기초금액을 정정 공고가 빈 값으로 지우지 않게 한다.
         if (i.BasePrice is not null)

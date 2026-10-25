@@ -9,7 +9,11 @@ public sealed record FieldChange(string Label, string Before, string After);
 public sealed record NoticeChange(DateTime DetectedAt, NoticeChangeType Type, string FromSeq, string ToSeq, IReadOnlyList<FieldChange> Fields);
 
 /// <summary>면허 제한 한 줄. Alternatives는 이 면허 대신 인정하는 업종이다.</summary>
-public sealed record LicenseRequirement(string Name, IReadOnlyList<string> Alternatives);
+public sealed record LicenseRequirement(string Name, IReadOnlyList<string> Alternatives)
+{
+    /// <summary>주력분야 묶음 (묶음 안은 모두, 묶음끼리는 하나).</summary>
+    public IReadOnlyList<IReadOnlyList<string>> MainFields { get; init; } = [];
+}
 
 /// <summary>면허 제한 한 그룹. 그룹 안의 면허는 "그리고"(모두 필요), 그룹끼리는 "또는"(한 그룹만 갖추면 됨)으로 본다.</summary>
 public sealed record LicenseGroup(int GroupNo, IReadOnlyList<LicenseRequirement> Items);
@@ -45,6 +49,9 @@ public sealed record NoticeDetail
     public string DetailUrl { get; init; } = "";
     public DateTime LastCheckedAt { get; init; }
     public IReadOnlyList<LicenseGroup> Licenses { get; init; } = [];
+
+    /// <summary>참가 가능 지역 (그중 한 곳). 비어 있으면 지역 제한이 없거나 아직 받지 않은 것이다.</summary>
+    public IReadOnlyList<string> RegionLimits { get; init; } = [];
 
     /// <summary>A값을 이루는 항목과 A값에 넣지 않는 비용 항목. 기초금액 원문이 없으면 비어 있다.</summary>
     public IReadOnlyList<CostItem> CostItems { get; init; } = [];

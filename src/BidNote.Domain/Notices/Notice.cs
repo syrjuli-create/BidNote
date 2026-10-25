@@ -71,6 +71,12 @@ public class Notice
 
     public List<NoticeLicense> Licenses { get; set; } = [];
 
+    /// <summary>참가 가능 지역. 비어 있으면 지역 제한이 없거나 아직 받지 않은 것이다.</summary>
+    public List<NoticeRegionLimit> RegionLimits { get; set; } = [];
+
+    /// <summary>마지막으로 받은 참가 가능 지역 원문의 Hash. 같으면 다시 저장하지 않는다.</summary>
+    public string RegionLimitHash { get; set; } = "";
+
     /// <summary>나라장터 공고 원문 링크.</summary>
     public string DetailUrl { get; set; } = "";
 }

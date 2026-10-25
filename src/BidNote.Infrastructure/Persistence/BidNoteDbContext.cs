@@ -25,6 +25,8 @@ public sealed class BidNoteDbContext(DbContextOptions<BidNoteDbContext> options)
     public DbSet<BidResultRank> BidResultRanks => Set<BidResultRank>();
     public DbSet<CompanyProfile> CompanyProfiles => Set<CompanyProfile>();
     public DbSet<CompanyLicense> CompanyLicenses => Set<CompanyLicense>();
+    public DbSet<CompanyLocation> CompanyLocations => Set<CompanyLocation>();
+    public DbSet<NoticeRegionLimit> NoticeRegionLimits => Set<NoticeRegionLimit>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -39,6 +41,7 @@ public sealed class BidNoteDbContext(DbContextOptions<BidNoteDbContext> options)
             e.Property(x => x.RawHash).HasMaxLength(64);
             e.HasMany(x => x.Histories).WithOne(x => x.Notice).HasForeignKey(x => x.NoticeId);
             e.HasMany(x => x.Licenses).WithOne(x => x.Notice).HasForeignKey(x => x.NoticeId);
+            e.HasMany(x => x.RegionLimits).WithOne(x => x.Notice).HasForeignKey(x => x.NoticeId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<NoticeHistory>(e => e.HasIndex(x => new { x.NoticeId, x.DetectedAt }));
         modelBuilder.Entity<NoticeLicense>(e =>
@@ -69,6 +72,7 @@ public sealed class BidNoteDbContext(DbContextOptions<BidNoteDbContext> options)
         modelBuilder.Entity<BidResultRank>(e =>
         {
             e.HasIndex(x => new { x.BidResultId, x.Rank });
+            e.HasIndex(x => x.BizNo); // 경쟁사 성향 (업체별 모아 보기)
             e.Property(x => x.CompanyName).HasMaxLength(BidResultRank.MaxNameLength);
         });
         modelBuilder.Entity<CompanyProfile>(e =>
@@ -78,13 +82,28 @@ public sealed class BidNoteDbContext(DbContextOptions<BidNoteDbContext> options)
             e.Property(x => x.BizNo).HasMaxLength(CompanyProfile.MaxBizNoLength);
             e.Property(x => x.Email).HasMaxLength(CompanyProfile.MaxEmailLength);
         });
+        modelBuilder.Entity<CompanyLocation>(e =>
+        {
+            e.HasIndex(x => x.Name).IsUnique();
+            e.Property(x => x.Name).HasMaxLength(CompanyLocation.MaxNameLength);
+        });
+        modelBuilder.Entity<NoticeRegionLimit>(e =>
+        {
+            e.HasIndex(x => x.NoticeId);
+            e.Property(x => x.Name).HasMaxLength(NoticeRegionLimit.MaxNameLength);
+        });
         modelBuilder.Entity<CompanyLicense>(e =>
         {
             e.HasIndex(x => x.Name).IsUnique();
             e.Property(x => x.Name).HasMaxLength(CompanyLicense.MaxNameLength);
             e.Ignore(x => x.AmountLimit);
+            e.Ignore(x => x.MainFieldNames);
         });
-        modelBuilder.Entity<NoticeLicense>().Ignore(x => x.AlternativeNames);
+        modelBuilder.Entity<NoticeLicense>(e =>
+        {
+            e.Ignore(x => x.AlternativeNames);
+            e.Ignore(x => x.MainFieldGroups);
+        });
         modelBuilder.Entity<LastSearch>(e =>
         {
             e.Property(x => x.Id).ValueGeneratedNever();
