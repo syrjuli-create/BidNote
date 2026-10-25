@@ -24,6 +24,23 @@ public class NoticeLicense
 
     public IReadOnlyList<string> AlternativeNames => SplitAlternatives(Alternatives);
 
+    /// <summary>
+    /// 주력분야 제한 (원문 indstrytyMfrcFldList, 예: "[1^포장공사]", "[1^토공사^포장공사]", "[1^도장공사],[2^습식·방수공사]").
+    /// 대괄호 하나를 묶음으로 보고 '|'로, 묶음 안 분야는 '^'로 잇는다. null이면 아직 원문에서 읽지 않은 것이다.
+    /// 묶음 안은 "모두", 묶음끼리는 "하나"로 본다 (면허 그룹과 같은 모양으로 가정, 확인 필요).
+    /// </summary>
+    public string? MainFields { get; set; }
+
+    public IReadOnlyList<IReadOnlyList<string>> MainFieldGroups => SplitMainFields(MainFields);
+
+    public static string JoinMainFields(IEnumerable<IReadOnlyList<string>> groups) =>
+        string.Join(Separator, groups.Select(g => string.Join('^', g.Select(x => x.Trim()).Where(x => x.Length > 0))).Where(x => x.Length > 0));
+
+    public static IReadOnlyList<IReadOnlyList<string>> SplitMainFields(string? joined) =>
+        string.IsNullOrEmpty(joined) ? []
+            : [.. joined.Split(Separator, StringSplitOptions.RemoveEmptyEntries)
+                .Select(g => (IReadOnlyList<string>)g.Split('^', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))];
+
     public static string JoinAlternatives(IEnumerable<string> names) =>
         string.Join(Separator, names.Select(x => x.Trim()).Where(x => x.Length > 0).Distinct(StringComparer.Ordinal));
 

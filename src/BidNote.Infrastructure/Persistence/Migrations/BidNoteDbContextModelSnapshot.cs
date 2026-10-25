@@ -149,6 +149,9 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("LastSuccessTo")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("RegionsLastSuccessTo")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("ResultsLastSuccessTo")
                         .HasColumnType("TEXT");
 
@@ -172,6 +175,10 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                     b.Property<long?>("CapacityAmount")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("MainFields")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -189,6 +196,31 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("CompanyLicenses");
+                });
+
+            modelBuilder.Entity("BidNote.Domain.Company.CompanyLocation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("AddedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsHeadOffice")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("CompanyLocations");
                 });
 
             modelBuilder.Entity("BidNote.Domain.Company.CompanyProfile", b =>
@@ -358,6 +390,10 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("RegionLimitHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ReservePriceRange")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -429,6 +465,9 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                     b.Property<int>("GroupNo")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("MainFields")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -444,6 +483,27 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                     b.HasIndex("NoticeId");
 
                     b.ToTable("NoticeLicenses");
+                });
+
+            modelBuilder.Entity("BidNote.Domain.Notices.NoticeRegionLimit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("NoticeId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NoticeId");
+
+                    b.ToTable("NoticeRegionLimits");
                 });
 
             modelBuilder.Entity("BidNote.Domain.Results.BidResult", b =>
@@ -649,6 +709,17 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                     b.Navigation("Notice");
                 });
 
+            modelBuilder.Entity("BidNote.Domain.Notices.NoticeRegionLimit", b =>
+                {
+                    b.HasOne("BidNote.Domain.Notices.Notice", "Notice")
+                        .WithMany("RegionLimits")
+                        .HasForeignKey("NoticeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Notice");
+                });
+
             modelBuilder.Entity("BidNote.Domain.Results.BidResult", b =>
                 {
                     b.HasOne("BidNote.Domain.Notices.Notice", "Notice")
@@ -674,6 +745,8 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                     b.Navigation("Histories");
 
                     b.Navigation("Licenses");
+
+                    b.Navigation("RegionLimits");
                 });
 
             modelBuilder.Entity("BidNote.Domain.Results.BidResult", b =>

@@ -83,6 +83,51 @@ public sealed class NoticeDetailTests : IDisposable
     }
 
     [Fact]
+    public async Task 상세의_추가_정보는_나중에_쌓인_지역_개찰_원문이_아니라_공고_원문에서_읽는다()
+    {
+        int id;
+        using (var db = testDb.NewContext())
+        {
+            var n = NewNotice("000", Now.AddDays(2));
+            n.RegionLimits = [new() { Name = "충청북도 충주시" }];
+            db.Notices.Add(n);
+            db.ApiRawResponses.AddRange(
+                new ApiRawResponse
+                {
+                    SourceSystem = SourceSystems.G2B,
+                    BusinessType = BusinessType.Construction,
+                    BidNo = "R1",
+                    ApiName = "getBidPblancListInfoCnstwk",
+                    ResponseJson = """{"notice":{"cntrctCnclsMthdNm":"제한경쟁"},"licenses":[]}"""
+                },
+                new ApiRawResponse
+                {
+                    SourceSystem = SourceSystems.G2B,
+                    BusinessType = BusinessType.Construction,
+                    BidNo = "R1",
+                    ApiName = "getBidPblancListInfoPrtcptPsblRgn",
+                    ResponseJson = """[{"prtcptPsblRgnNm":"충청북도 충주시"}]"""
+                },
+                new ApiRawResponse
+                {
+                    SourceSystem = SourceSystems.G2B,
+                    BusinessType = BusinessType.Construction,
+                    BidNo = "R1",
+                    ApiName = "getOpengResultListInfoCnstwk",
+                    ResponseJson = """{"progrsDivCdNm":"개찰완료"}"""
+                });
+            await db.SaveChangesAsync();
+            id = n.Id;
+        }
+
+        using var ctx = testDb.NewContext();
+        var d = await new NoticeDetailQueries(ctx).GetAsync(id, CancellationToken.None);
+
+        Assert.Equal([new LabeledValue("계약방법", "제한경쟁")], d!.Extras);
+        Assert.Equal(["충청북도 충주시"], d.RegionLimits);
+    }
+
+    [Fact]
     public async Task 없는_공고는_null()
     {
         using var ctx = testDb.NewContext();

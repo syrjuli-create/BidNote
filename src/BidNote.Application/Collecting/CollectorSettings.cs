@@ -1,7 +1,9 @@
 namespace BidNote.Application.Collecting;
 
 /// <param name="ResultsLastSuccessTo">개찰 결과 수집이 마지막으로 성공한 구간의 끝. 공고 수집과 따로 실패할 수 있어 따로 둔다.</param>
-public sealed record CollectorSettingsValues(int BackfillDays, int IntervalMinutes, DateTime? LastSuccessTo, DateTime? ResultsLastSuccessTo = null);
+/// <param name="RegionsLastSuccessTo">참가 가능 지역 수집이 마지막으로 성공한 구간의 끝.</param>
+public sealed record CollectorSettingsValues(int BackfillDays, int IntervalMinutes, DateTime? LastSuccessTo,
+    DateTime? ResultsLastSuccessTo = null, DateTime? RegionsLastSuccessTo = null);
 
 /// <summary>설정 파일의 기본값. 화면에서 한 번이라도 저장하면 DB 값이 우선한다.</summary>
 public sealed class CollectorOptions
@@ -22,6 +24,9 @@ public interface ICollectorSettingsStore
 
     /// <summary>개찰 결과를 이 시각까지 받았다고 기록한다.</summary>
     Task MarkResultsSuccessAsync(DateTime collectedTo, CancellationToken cancellationToken);
+
+    /// <summary>참가 가능 지역을 이 시각까지 받았다고 기록한다.</summary>
+    Task MarkRegionsSuccessAsync(DateTime collectedTo, CancellationToken cancellationToken);
 }
 
 public static class CollectorRules
@@ -55,13 +60,14 @@ public static class CollectorRules
     }
 
     /// <summary>
-    /// 개찰 결과를 어디서부터 받을지. 공고와 같은 구간(<paramref name="from"/>)을 받되, 개찰 결과가 그보다 앞에서 실패해 멈췄으면
-    /// 그 시각부터 다시 받는다. 한 번도 받은 적이 없으면 설정 기간만큼 거슬러 받는다. 최대 기간보다 앞으로는 가지 않는다.
+    /// 공고와 따로 받는 것(개찰 결과, 참가 가능 지역)을 어디서부터 받을지. 공고와 같은 구간(<paramref name="from"/>)을 받되,
+    /// 그것만 앞에서 실패해 멈췄으면 그 시각부터 다시 받는다. 한 번도 받은 적이 없으면 설정 기간만큼 거슬러 받는다.
+    /// 최대 기간보다 앞으로는 가지 않는다.
     /// </summary>
-    public static DateTime ResultsFrom(DateTime from, DateTime to, DateTime? resultsLastSuccessTo, bool hasAnyResult, int backfillDays)
+    public static DateTime CatchUpFrom(DateTime from, DateTime to, DateTime? lastSuccessTo, bool hasAny, int backfillDays)
     {
-        DateTime start = resultsLastSuccessTo is { } last ? (last < from ? last : from)
-            : hasAnyResult ? from
+        DateTime start = lastSuccessTo is { } last ? (last < from ? last : from)
+            : hasAny ? from
             : to.AddDays(-Math.Max(backfillDays, MinBackfillDays));
         DateTime oldest = to.AddDays(-MaxBackfillDays);
         return start < oldest ? oldest : start;

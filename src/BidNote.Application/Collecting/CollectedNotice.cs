@@ -3,7 +3,8 @@ using BidNote.Domain.Notices;
 namespace BidNote.Application.Collecting;
 
 /// <param name="Alternatives">이 줄 대신 인정하는 업종 (예: 건축공사업 줄의 토목건축공사업).</param>
-public sealed record CollectedLicense(int GroupNo, string Name, IReadOnlyList<string>? Alternatives = null);
+/// <param name="MainFields">주력분야 묶음 (대괄호 하나가 묶음 하나).</param>
+public sealed record CollectedLicense(int GroupNo, string Name, IReadOnlyList<string>? Alternatives = null, IReadOnlyList<IReadOnlyList<string>>? MainFields = null);
 
 /// <summary>수집기가 API 응답을 해석해 넘기는 공고 한 건과 그 원문.</summary>
 public sealed record CollectedNotice

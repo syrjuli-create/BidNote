@@ -56,12 +56,12 @@ public sealed class CollectorSettingsTests : IDisposable
     {
         DateTime from = Now.AddMinutes(-10);
 
-        Assert.Equal(from, CollectorRules.ResultsFrom(from, Now, from, hasAnyResult: true, 14));                     // 지난번 성공: 같은 구간
-        Assert.Equal(Now.AddHours(-5), CollectorRules.ResultsFrom(from, Now, Now.AddHours(-5), true, 14));          // 지난번 실패: 멈춘 곳부터
-        Assert.Equal(Now.AddDays(-3), CollectorRules.ResultsFrom(Now.AddDays(-3), Now, Now.AddHours(-1), true, 14)); // 다시 받기 구간이 더 앞이면 그 구간
-        Assert.Equal(from, CollectorRules.ResultsFrom(from, Now, null, hasAnyResult: true, 14));                     // 기록 전부터 결과가 있던 DB
-        Assert.Equal(Now.AddDays(-14), CollectorRules.ResultsFrom(from, Now, null, hasAnyResult: false, 14));       // 처음
-        Assert.Equal(Now.AddDays(-60), CollectorRules.ResultsFrom(from, Now, Now.AddDays(-200), true, 14));         // 최대 60일
+        Assert.Equal(from, CollectorRules.CatchUpFrom(from, Now, from, hasAny: true, 14));                     // 지난번 성공: 같은 구간
+        Assert.Equal(Now.AddHours(-5), CollectorRules.CatchUpFrom(from, Now, Now.AddHours(-5), true, 14));          // 지난번 실패: 멈춘 곳부터
+        Assert.Equal(Now.AddDays(-3), CollectorRules.CatchUpFrom(Now.AddDays(-3), Now, Now.AddHours(-1), true, 14)); // 다시 받기 구간이 더 앞이면 그 구간
+        Assert.Equal(from, CollectorRules.CatchUpFrom(from, Now, null, hasAny: true, 14));                     // 기록 전부터 결과가 있던 DB
+        Assert.Equal(Now.AddDays(-14), CollectorRules.CatchUpFrom(from, Now, null, hasAny: false, 14));       // 처음
+        Assert.Equal(Now.AddDays(-60), CollectorRules.CatchUpFrom(from, Now, Now.AddDays(-200), true, 14));         // 최대 60일
     }
 
     [Theory]

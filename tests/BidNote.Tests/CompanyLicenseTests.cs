@@ -145,7 +145,7 @@ public sealed class CompanyStoreTests : IDisposable
 
         var info = await store.GetAsync(CancellationToken.None);
 
-        Assert.Equal(new CompanyInfo("○○건설", "123-45-67890", "대전", "a@b.kr", info.Licenses), info);
+        Assert.Equal(("○○건설", "123-45-67890", "대전", "a@b.kr"), (info.Name, info.BizNo, info.Region, info.Email));
         Assert.Equal(["건축공사업", "토목공사업"], info.LicenseNames);
 
         await store.RemoveLicenseAsync("토목공사업", CancellationToken.None);
@@ -219,9 +219,9 @@ public sealed class CompanyStoreTests : IDisposable
         }
 
         using (var db = testDb.NewContext())
-            Assert.Equal(1, await DatabaseInitializer.FillLicenseAlternativesAsync(db, NullLogger.Instance, CancellationToken.None));
+            Assert.Equal(1, await DatabaseInitializer.FillLicenseDetailsAsync(db, NullLogger.Instance, CancellationToken.None));
         using (var db = testDb.NewContext())
-            Assert.Equal(0, await DatabaseInitializer.FillLicenseAlternativesAsync(db, NullLogger.Instance, CancellationToken.None));
+            Assert.Equal(0, await DatabaseInitializer.FillLicenseDetailsAsync(db, NullLogger.Instance, CancellationToken.None));
 
         using var check = testDb.NewContext();
         var rows = await check.NoticeLicenses.Where(x => x.NoticeId == id).OrderBy(x => x.GroupNo).ToListAsync();
