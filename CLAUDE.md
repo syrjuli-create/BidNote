@@ -1,6 +1,6 @@
 # CLAUDE.md — 입찰노트 (BidNote)
 
-이 저장소에서 작업할 때 먼저 읽는다. 진행 상황과 다음 할 일은 `PROGRESS.md`, 기획 문서는 `docs/`에 있다.
+이 저장소에서 작업할 때 먼저 읽는다. 진행 상황과 다음 할 일은 `PROGRESS.md`, 날짜별 작업 내용은 `docs/작업기록.md`, 기획 문서는 `docs/`에 있다.
 어느 PC에서 받아도 같은 맥락으로 이어서 작업할 수 있게, 계획·결정·함정은 PC 메모가 아니라 이 저장소에 남긴다.
 
 ## 무엇인가
@@ -46,6 +46,19 @@ dotnet run --project src/BidNote.Web --launch-profile http   # http://localhost:
 - 설정 우선순위: appsettings.json → appsettings.Local.json → 환경변수 → 명령줄 (뒤가 이김).
 - 같은 키로 두 PC가 동시에 수집하면 하루 호출 한도를 나눠 쓴다. 한 대만 켜 둔다.
 
+## 새 PC 준비 (관리자 권한 없이 되는 방법, 2026-10-25 실제로 해 본 순서)
+
+1. **.NET 10 SDK**: `dotnet --list-sdks`에 10.x가 없으면 `dotnet-install.ps1 -Channel 10.0 -InstallDir "$env:LOCALAPPDATA\Microsoft\dotnet"` 후 그 폴더를 사용자 PATH 앞에 둔다 (Program Files에 쓰려면 관리자 권한 필요).
+2. **git**: 없으면 Git for Windows를 깔거나, 관리자 권한이 없으면 MinGit zip을 `%LOCALAPPDATA%\Programs\MinGit`에 풀고 `cmd` 폴더를 PATH에 넣는다.
+3. **푸시 로그인**: MinGit에는 로그인 도우미가 없다. Git Credential Manager(포터블 zip)를 `%LOCALAPPDATA%\Programs\GCM`에 두고 `git config --global credential.helper <gcm 경로>`. 첫 푸시 때 브라우저로 GitHub 로그인 한 번. (Git for Windows 정식판은 처음부터 들어 있다)
+4. **git 사용자**: `git config --global user.name`/`user.email`을 설정하거나, 없으면 기존 작성자와 같게 맞춘다.
+5. `git clone` → `src/BidNote.Web/appsettings.Local.json` 작성(키) → `dotnet tool restore` → `dotnet build` → 실행.
+6. 실행용 vbs(`실행파일/`)는 경로가 PC 기준이라 그 PC에 맞게 고친다. `dotnet`이 PATH에 있어야 vbs가 서버를 띄운다.
+
+- `gh`가 없으면 PR은 GitHub 웹에서 만들거나, GCM에 저장된 로그인으로 GitHub API(`POST /repos/syrjuli-create/BidNote/pulls`)를 부른다. 토큰은 출력·저장하지 않는다.
+- PowerShell 5.1은 BOM 없는 UTF-8 스크립트의 한글 경로를 깨뜨린다. 임시 스크립트에는 한글 경로를 넣지 말고 인자로 넘긴다.
+- 날짜별 작업 내용은 `docs/작업기록.md`에 남긴다.
+
 ## 나라장터 API (실제 호출로 확인한 사실)
 
 - 주소: `https://apis.data.go.kr/1230000/ad/BidPublicInfoService/` (차세대 경로만 동작, 구 `…04/05`는 400)
@@ -85,4 +98,5 @@ dotnet run --project src/BidNote.Web --launch-profile http   # http://localhost:
 - 커밋·push는 사용자가 요청할 때. 기능 하나 = 커밋 하나.
 - 파일 삭제, 레지스트리 등록, 외부 쓰기 같은 되돌리기 어려운 일은 먼저 확인받는다.
 - 실행용 vbs·시작 화면(`실행파일/`)은 저장소 밖(`D:\01. 클로드\01.k\실행파일`)에 있고 경로가 그 PC 기준이다.
-- 작업을 마치면 `PROGRESS.md`의 진행 상황과 다음 할 일을 고쳐 둔다.
+- 작업을 마치면 `PROGRESS.md`의 진행 상황과 다음 할 일을 고쳐 둔다. 하루 작업이 끝나면 `docs/작업기록.md`에 무엇을·왜·어떻게 확인했는지 덧붙인다.
+- 기능 하나는 브랜치 하나(`feat/…`, `fix/…`)에서 만들고 PR로 main에 합친다. 병합은 사용자가 한다.
