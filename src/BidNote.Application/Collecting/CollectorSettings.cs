@@ -2,8 +2,9 @@ namespace BidNote.Application.Collecting;
 
 /// <param name="ResultsLastSuccessTo">개찰 결과 수집이 마지막으로 성공한 구간의 끝. 공고 수집과 따로 실패할 수 있어 따로 둔다.</param>
 /// <param name="RegionsLastSuccessTo">참가 가능 지역 수집이 마지막으로 성공한 구간의 끝.</param>
+/// <param name="RegionsCoveredFrom">참가 가능 지역을 이 시각부터는 받아 두었다 (모르면 null).</param>
 public sealed record CollectorSettingsValues(int BackfillDays, int IntervalMinutes, DateTime? LastSuccessTo,
-    DateTime? ResultsLastSuccessTo = null, DateTime? RegionsLastSuccessTo = null);
+    DateTime? ResultsLastSuccessTo = null, DateTime? RegionsLastSuccessTo = null, DateTime? RegionsCoveredFrom = null);
 
 /// <summary>설정 파일의 기본값. 화면에서 한 번이라도 저장하면 DB 값이 우선한다.</summary>
 public sealed class CollectorOptions
@@ -27,6 +28,9 @@ public interface ICollectorSettingsStore
 
     /// <summary>참가 가능 지역을 이 시각까지 받았다고 기록한다.</summary>
     Task MarkRegionsSuccessAsync(DateTime collectedTo, CancellationToken cancellationToken);
+
+    /// <summary>참가 가능 지역을 이 시각부터는 받아 두었다고 기록한다 (더 앞일 때만 바꾼다).</summary>
+    Task MarkRegionsCoveredFromAsync(DateTime coveredFrom, CancellationToken cancellationToken);
 }
 
 public static class CollectorRules
@@ -71,6 +75,20 @@ public static class CollectorRules
             : to.AddDays(-Math.Max(backfillDays, MinBackfillDays));
         DateTime oldest = to.AddDays(-MaxBackfillDays);
         return start < oldest ? oldest : start;
+    }
+
+    /// <summary>
+    /// 참가 가능 지역을 더 앞에서부터 채워야 하는 구간의 시작. 진행 공고 중 가장 먼저 올라온 공고의 게시일(최대 기간까지)이
+    /// 받아 둔 시작(<paramref name="coveredFrom"/>, 모르면 이번에 받은 구간의 시작 <paramref name="from"/>)보다 앞이면 그 시각, 아니면 null.
+    /// 구간의 끝은 받아 둔 시작이다.
+    /// </summary>
+    public static DateTime? RegionGapStart(DateTime? coveredFrom, DateTime from, DateTime to, DateTime? oldestOpenPostedAt)
+    {
+        if (oldestOpenPostedAt is not { } oldest) return null;
+        DateTime limit = to.AddDays(-MaxBackfillDays);
+        DateTime want = oldest < limit ? limit : oldest;
+        DateTime have = coveredFrom ?? from;
+        return want < have ? want : null;
     }
 
     /// <summary>며칠치를 받을 때의 대략적인 API 호출 수 (공고 목록·면허·기초금액, 한 번에 999건).</summary>

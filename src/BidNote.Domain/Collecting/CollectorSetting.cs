@@ -22,5 +22,8 @@ public class CollectorSetting
     /// <summary>참가 가능 지역 수집이 마지막으로 성공한 구간의 끝.</summary>
     public DateTime? RegionsLastSuccessTo { get; set; }
 
+    /// <summary>참가 가능 지역을 이 시각부터는 받아 두었다. 진행 공고가 이보다 앞서 올라왔으면 그 사이를 채운다.</summary>
+    public DateTime? RegionsCoveredFrom { get; set; }
+
     public DateTime UpdatedAt { get; set; }
 }

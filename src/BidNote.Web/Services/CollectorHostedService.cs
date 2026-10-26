@@ -109,6 +109,9 @@ public sealed class CollectorHostedService(
     }
 
     /// <summary>참가 가능 지역을 받는다. 개찰 결과와 같은 방식으로 따로 성공 시각을 기록하고, 처음이면 백필 기간만큼 거슬러 받는다.</summary>
+    /// <summary>참가 가능 지역을 앞쪽으로 채울 때 한 번에 조회하는 기간.</summary>
+    private static readonly TimeSpan RegionChunk = TimeSpan.FromDays(7);
+
     private async Task CollectRegionsAsync(IServiceProvider services, DateTime from, DateTime to, int backfillDays, CancellationToken stoppingToken)
     {
         var regions = services.GetRequiredService<IRegionLimitService>();
@@ -120,6 +123,25 @@ public sealed class CollectorHostedService(
             int updated = await regions.CollectAsync(from, to, stoppingToken);
             await settingsStore.MarkRegionsSuccessAsync(to, stoppingToken);
             logger.LogInformation("참가 가능 지역: {From:yyyy-MM-dd HH:mm}~{To:yyyy-MM-dd HH:mm} 반영 {Updated}건", from, to, updated);
+
+            // 받아 둔 구간보다 먼저 올라온 진행 공고가 있으면 그 사이도 채운다 (처음 켤 때 설정 기간만 받았던 경우 등).
+            DateTime? oldest = await regions.OldestOpenPostedAtAsync(to, stoppingToken);
+            DateTime covered = settings.RegionsCoveredFrom ?? from;
+            if (CollectorRules.RegionGapStart(settings.RegionsCoveredFrom, from, to, oldest) is { } gapStart)
+            {
+                // 이 API는 조회 기간이 길면 "입력범위값 초과"로 거절하므로 뒤에서부터 나눠 받고, 받은 만큼씩 기록한다.
+                await settingsStore.MarkRegionsCoveredFromAsync(covered, stoppingToken);
+                int filled = 0;
+                while (covered > gapStart)
+                {
+                    DateTime chunkFrom = covered - RegionChunk < gapStart ? gapStart : covered - RegionChunk;
+                    filled += await regions.CollectAsync(chunkFrom, covered, stoppingToken);
+                    covered = chunkFrom;
+                    await settingsStore.MarkRegionsCoveredFromAsync(covered, stoppingToken);
+                }
+                logger.LogInformation("참가 가능 지역 채우기: {From:yyyy-MM-dd HH:mm}부터 반영 {Updated}건", gapStart, filled);
+            }
+            await settingsStore.MarkRegionsCoveredFromAsync(covered, stoppingToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

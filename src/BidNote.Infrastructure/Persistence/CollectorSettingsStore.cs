@@ -12,7 +12,7 @@ public sealed class CollectorSettingsStore(BidNoteDbContext db, IOptions<Collect
         var row = await db.CollectorSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == CollectorSetting.SingletonId, cancellationToken).ConfigureAwait(false);
         return row is null
             ? new CollectorSettingsValues(defaults.Value.BackfillDays, defaults.Value.IntervalMinutes, null)
-            : new CollectorSettingsValues(row.BackfillDays, row.IntervalMinutes, row.LastSuccessTo, row.ResultsLastSuccessTo, row.RegionsLastSuccessTo);
+            : new CollectorSettingsValues(row.BackfillDays, row.IntervalMinutes, row.LastSuccessTo, row.ResultsLastSuccessTo, row.RegionsLastSuccessTo, row.RegionsCoveredFrom);
     }
 
     public async Task SaveAsync(int backfillDays, int intervalMinutes, CancellationToken cancellationToken)
@@ -43,6 +43,13 @@ public sealed class CollectorSettingsStore(BidNoteDbContext db, IOptions<Collect
     {
         var row = await RowAsync(cancellationToken).ConfigureAwait(false);
         if (row.RegionsLastSuccessTo is null || collectedTo > row.RegionsLastSuccessTo) row.RegionsLastSuccessTo = collectedTo;
+        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task MarkRegionsCoveredFromAsync(DateTime coveredFrom, CancellationToken cancellationToken)
+    {
+        var row = await RowAsync(cancellationToken).ConfigureAwait(false);
+        if (row.RegionsCoveredFrom is null || coveredFrom < row.RegionsCoveredFrom) row.RegionsCoveredFrom = coveredFrom;
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 

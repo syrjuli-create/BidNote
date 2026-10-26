@@ -64,6 +64,35 @@ public sealed class CollectorSettingsTests : IDisposable
         Assert.Equal(Now.AddDays(-60), CollectorRules.CatchUpFrom(from, Now, Now.AddDays(-200), true, 14));         // 최대 60일
     }
 
+    [Fact]
+    public async Task 참가_가능_지역을_받아_둔_시작은_더_앞으로만_바뀐다()
+    {
+        using var db = testDb.NewContext();
+        var store = Store(db);
+        await store.MarkRegionsCoveredFromAsync(Now.AddDays(-7), CancellationToken.None);
+        await store.MarkRegionsCoveredFromAsync(Now.AddMinutes(-10), CancellationToken.None);
+        await store.MarkRegionsCoveredFromAsync(Now.AddDays(-25), CancellationToken.None);
+        await store.MarkRegionsCoveredFromAsync(Now.AddDays(-20), CancellationToken.None);
+
+        Assert.Equal(Now.AddDays(-25), (await store.GetAsync(CancellationToken.None)).RegionsCoveredFrom);
+    }
+
+    [Fact]
+    public void 참가_가능_지역은_받아_둔_구간보다_먼저_올라온_진행_공고가_있으면_그_사이를_채운다()
+    {
+        DateTime from = Now.AddMinutes(-10);
+
+        // 처음 켤 때 7일만 받았는데 진행 공고는 25일 전 것부터 있다 → 25일 전부터 채운다.
+        Assert.Equal(Now.AddDays(-25), CollectorRules.RegionGapStart(Now.AddDays(-7), from, Now, Now.AddDays(-25)));
+        // 받아 둔 시작을 모르면(예전 DB) 이번 구간의 시작을 기준으로 본다.
+        Assert.Equal(Now.AddDays(-25), CollectorRules.RegionGapStart(null, from, Now, Now.AddDays(-25)));
+        // 이미 더 앞에서부터 받아 두었으면 채울 것 없음.
+        Assert.Null(CollectorRules.RegionGapStart(Now.AddDays(-30), from, Now, Now.AddDays(-25)));
+        // 진행 공고가 없으면 채울 것 없음, 아주 오래된 공고라도 최대 60일까지만.
+        Assert.Null(CollectorRules.RegionGapStart(Now.AddDays(-7), from, Now, null));
+        Assert.Equal(Now.AddDays(-60), CollectorRules.RegionGapStart(Now.AddDays(-7), from, Now, Now.AddDays(-200)));
+    }
+
     [Theory]
     [InlineData(0, 10)]
     [InlineData(61, 10)]

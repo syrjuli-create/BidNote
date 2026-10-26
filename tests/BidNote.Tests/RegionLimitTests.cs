@@ -16,6 +16,17 @@ public sealed class RegionEligibilityTests
     private static RegionVerdict Check(string[] notice, params string[] mine) => RegionEligibility.Check(notice, mine);
 
     [Fact]
+    public void 참가_가능_지역은_7일씩_나눠_조회한다()
+    {
+        var from = new DateTime(2026, 9, 26, 9, 0, 0);
+        var w = G2BRegionLimitSource.Windows(from, from.AddDays(16)).ToList();
+
+        Assert.Equal([(from, from.AddDays(7)), (from.AddDays(7), from.AddDays(14)), (from.AddDays(14), from.AddDays(16))], w);
+        Assert.Single(G2BRegionLimitSource.Windows(from, from.AddMinutes(10)));
+        Assert.Empty(G2BRegionLimitSource.Windows(from, from));
+    }
+
+    [Fact]
     public void 공고_지역_중_한_곳에_소재지가_있으면_참여_가능()
     {
         string[] limits = ["충청북도 충주시", "충청북도 제천시", "충청북도 단양군"];

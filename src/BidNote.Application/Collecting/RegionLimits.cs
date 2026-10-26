@@ -19,4 +19,7 @@ public interface IRegionLimitService
 
     /// <summary>참가 가능 지역을 받아 저장된 공고에 붙인다. 새로 붙이거나 바뀐 공고 수를 돌려준다.</summary>
     Task<int> CollectAsync(DateTime from, DateTime to, CancellationToken cancellationToken);
+
+    /// <summary>진행 공고(마감 전·취소 아님) 중 가장 먼저 올라온 공고의 게시일. 진행 공고가 없으면 null.</summary>
+    Task<DateTime?> OldestOpenPostedAtAsync(DateTime now, CancellationToken cancellationToken);
 }

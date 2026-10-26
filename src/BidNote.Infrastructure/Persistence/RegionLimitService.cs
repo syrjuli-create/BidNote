@@ -24,6 +24,13 @@ public sealed class RegionLimitService(
         return await db.Notices.AnyAsync(n => n.RegionLimitHash != "", cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<DateTime?> OldestOpenPostedAtAsync(DateTime now, CancellationToken cancellationToken)
+    {
+        await using var db = await factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        return await db.Notices.AsNoTracking().Where(n => n.IsActive && n.DueAt > now && n.BusinessType == BusinessType.Construction)
+            .OrderBy(n => n.PostedAt).Select(n => (DateTime?)n.PostedAt).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<int> CollectAsync(DateTime from, DateTime to, CancellationToken cancellationToken)
     {
         var rows = await source.CollectAsync(from, to, cancellationToken).ConfigureAwait(false);
