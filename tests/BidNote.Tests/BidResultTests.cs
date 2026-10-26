@@ -251,6 +251,81 @@ public sealed class BidResultServiceTests : IDisposable
         Assert.Equal(after, (await service.GetAsync(id, 10, CancellationToken.None))!.Mine);
     }
 
+    private void SetMyBizNo(string bizNo)
+    {
+        using var db = testDb.NewContext();
+        db.CompanyProfiles.Add(new BidNote.Domain.Company.CompanyProfile { Name = "우리건설", BizNo = bizNo });
+        db.SaveChanges();
+    }
+
+    private static CollectedRanking RankingWith(params (int? Rank, string BizNo, long Amount, string Remark)[] rows) => new(
+        100_000_000, 100_000_000,
+        [.. rows.Select(r => new CollectedRank(r.Rank, "업체" + r.BizNo, r.BizNo, r.Amount, null, r.Remark))], true);
+
+    [Fact]
+    public async Task 내_사업자번호가_개찰_결과에_있으면_실제_순위와_실제_금액의_사정률로_비교한다()
+    {
+        int id = AddNotice("R1");
+        source.Openings.Add(Opening("R1", winner: 88_000_000));
+        source.Rankings["R1"] = RankingWith((1, "1111111111", 88_000_000, "정상"), (2, "1234567890", 88_050_000, "정상"), (3, "2222222222", 88_100_000, "정상"));
+        await service.CollectOpeningsAsync(Now.AddDays(-3), Now, CancellationToken.None);
+        SetMyBizNo("123-45-67890");
+        using (var db = testDb.NewContext())
+        {
+            // 기록한 금액은 실제로 써낸 금액과 다르다 (추정이면 3순위).
+            db.MyBids.Add(new MyBid { NoticeId = id, AssessmentRate = 100.4, BidAmount = 88_150_000, CreatedAt = Now, UpdatedAt = Now });
+            db.SaveChanges();
+        }
+        await service.FetchRanksAsync(id, CancellationToken.None);
+
+        var outcome = (await service.MyBidOutcomesAsync(CancellationToken.None))[id];
+
+        Assert.Equal(new MyRank(MyRankKind.Actual, 2, "정상"), outcome.Rank);
+        double mine = BidResultMath.AssessmentRateOf(88_050_000, 100_000_000, 87.745, 0)!.Value;
+        Assert.Equal(mine - outcome.WinnerAssessmentRate!.Value, outcome.RateGap!.Value, 6);
+    }
+
+    [Fact]
+    public async Task 투찰_기록이_없어도_개찰_결과에_우리_회사가_있으면_상세에_보여_주고_순위_밖이면_이유를_준다()
+    {
+        int id = AddNotice("R1");
+        source.Openings.Add(Opening("R1", winner: 88_000_000));
+        source.Rankings["R1"] = RankingWith((1, "1111111111", 88_000_000, "정상"), (null, "1234567890", 80_000_000, "낙찰하한선 미달"));
+        await service.CollectOpeningsAsync(Now.AddDays(-3), Now, CancellationToken.None);
+        SetMyBizNo("1234567890");
+        await service.FetchRanksAsync(id, CancellationToken.None);
+
+        var mine = (await service.GetAsync(id, 10, CancellationToken.None))!.Mine;
+
+        Assert.NotNull(mine);
+        Assert.Equal(new MyRank(MyRankKind.Actual, null, "낙찰하한선 미달"), mine.Rank);
+    }
+
+    [Fact]
+    public async Task 사업자번호가_없거나_결과에_없으면_지금처럼_추정_순위()
+    {
+        int id = AddNotice("R1");
+        source.Openings.Add(Opening("R1", winner: 88_000_000));
+        source.Rankings["R1"] = Ranking(88_000_000, 88_100_000, 88_200_000);
+        await service.CollectOpeningsAsync(Now.AddDays(-3), Now, CancellationToken.None);
+        SetMyBizNo("9999999999");
+        using (var db = testDb.NewContext())
+        {
+            db.MyBids.Add(new MyBid { NoticeId = id, AssessmentRate = 100.4, BidAmount = 88_150_000, CreatedAt = Now, UpdatedAt = Now });
+            db.SaveChanges();
+        }
+        await service.FetchRanksAsync(id, CancellationToken.None);
+
+        Assert.Equal(new MyRank(MyRankKind.Ranked, 3), (await service.MyBidOutcomesAsync(CancellationToken.None))[id].Rank);
+    }
+
+    [Theory]
+    [InlineData("123-45-67890", "1234567890")]
+    [InlineData(" 1234567890 ", "1234567890")]
+    [InlineData("", "")]
+    public void 사업자번호는_숫자만_남겨_비교한다(string input, string expected) =>
+        Assert.Equal(expected, BidResultMath.BizNoKey(input));
+
     [Fact]
     public async Task 순위는_내_투찰_기록과_관심_공고만_미리_받는다()
     {

@@ -79,9 +79,13 @@ public enum MyRankKind
     Ranked,
     BelowFloor,
     OverPlanned,
+
+    /// <summary>내 사업자번호로 개찰 결과에서 우리 회사를 찾았다. 하한 미달 등으로 순위에서 빠졌으면 Rank가 null이고 Remark에 이유가 온다.</summary>
+    Actual,
 }
 
-public sealed record MyRank(MyRankKind Kind, int? Rank);
+/// <summary>Ranked·BelowFloor·OverPlanned는 내 투찰금액으로 짐작한 것, Actual은 개찰 결과에 나온 실제 순위.</summary>
+public sealed record MyRank(MyRankKind Kind, int? Rank, string Remark = "");
 
 /// <summary>개찰 결과 계산. 사정률 역산은 투찰금액 계산기와 같은 산식을 쓴다.</summary>
 public static class BidResultMath
@@ -104,6 +108,9 @@ public static class BidResultMath
         amount is > 0 && basePrice is > 0 && lowerLimitRate > 0
             ? BidCalculator.AssessmentRateFor(basePrice.Value, lowerLimitRate, aValue, amount.Value)
             : null;
+
+    /// <summary>사업자번호 비교용: 숫자만 남긴다 ("123-45-67890" → "1234567890").</summary>
+    public static string BizNoKey(string? bizNo) => new((bizNo ?? "").Where(char.IsAsciiDigit).ToArray());
 
     /// <summary>
     /// 내 투찰금액이 몇 순위였을지. 순위가 있는 업체 중 나보다 낮게 쓴 곳의 수 + 1로 본다.

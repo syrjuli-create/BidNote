@@ -209,8 +209,20 @@ public sealed class BidResultService(
 
         var myBid = await db.MyBids.AsNoTracking().Where(x => x.NoticeId == noticeId)
             .Select(x => new { x.BidAmount, x.AssessmentRate }).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
-        MyBidOutcome? mine = myBid is null ? null
-            : await OutcomeAsync(db, noticeId, r, basis, myBid.BidAmount, myBid.AssessmentRate, cancellationToken).ConfigureAwait(false);
+        string bizNo = await MyBizNoAsync(db, cancellationToken).ConfigureAwait(false);
+        MyBidOutcome? mine;
+        if (myBid is not null)
+        {
+            mine = await OutcomeAsync(db, noticeId, r, basis, myBid.BidAmount, myBid.AssessmentRate, bizNo, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            // 투찰 기록을 남기지 않았어도 개찰 결과에 우리 회사가 있으면 실제 결과를 보여 준다.
+            var found = await FindMineAsync(db, r, bizNo, cancellationToken).ConfigureAwait(false);
+            mine = found?.Amount is { } amount
+                ? await OutcomeAsync(db, noticeId, r, basis, amount, basis.RateOf(amount) ?? 0, bizNo, cancellationToken).ConfigureAwait(false)
+                : null;
+        }
 
         return new BidResultView(noticeId, r.Status, r.ParticipantCount, r.OpenedAt,
             r.PlannedPrice, BidResultMath.ActualAssessmentRate(r.PlannedPrice, basis.BasePrice), basis.Floor,
@@ -235,10 +247,11 @@ public sealed class BidResultService(
             .ToListAsync(cancellationToken).ConfigureAwait(false);
 
         var outcomes = new Dictionary<int, MyBidOutcome>();
+        string bizNo = await MyBizNoAsync(db, cancellationToken).ConfigureAwait(false);
         foreach (var x in rows)
         {
             var basis = new Basis(x.Result.ResultBasePrice ?? x.BasePrice, x.LowerLimitRate, x.AValue ?? 0, x.Result.PlannedPrice);
-            outcomes[x.NoticeId] = await OutcomeAsync(db, x.NoticeId, x.Result, basis, x.BidAmount, x.AssessmentRate, cancellationToken).ConfigureAwait(false);
+            outcomes[x.NoticeId] = await OutcomeAsync(db, x.NoticeId, x.Result, basis, x.BidAmount, x.AssessmentRate, bizNo, cancellationToken).ConfigureAwait(false);
         }
         return outcomes;
     }
@@ -254,12 +267,29 @@ public sealed class BidResultService(
     private static BidRankView ToView(BidResultRank x, Basis basis) =>
         new(x.Rank, x.CompanyName, x.Amount, x.BidRate, basis.RateOf(x.Amount), x.Remark);
 
+    /// <summary>내 정보의 사업자번호 (숫자만). 없으면 빈 문자열.</summary>
+    private static async Task<string> MyBizNoAsync(BidNoteDbContext db, CancellationToken cancellationToken) =>
+        BidResultMath.BizNoKey(await db.CompanyProfiles.AsNoTracking().Select(x => x.BizNo)
+            .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false));
+
+    /// <summary>개찰 결과의 업체 중 우리 회사(사업자번호가 같은 줄).</summary>
+    private static async Task<BidResultRank?> FindMineAsync(BidNoteDbContext db, BidResult r, string bizNo, CancellationToken cancellationToken) =>
+        bizNo.Length == 0 || r.RanksFetchedAt is null ? null
+            : await db.BidResultRanks.AsNoTracking().Where(x => x.BidResultId == r.Id && x.BizNo == bizNo)
+                .OrderBy(x => x.Rank == null).ThenBy(x => x.Rank).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+
     private static async Task<MyBidOutcome> OutcomeAsync(BidNoteDbContext db, int noticeId, BidResult r, Basis basis,
-        long myAmount, double myRate, CancellationToken cancellationToken)
+        long myAmount, double myRate, string myBizNo, CancellationToken cancellationToken)
     {
         double? winnerRate = basis.RateOf(r.WinnerAmount);
         MyRank rank = new(MyRankKind.Unknown, null);
-        if (r.RanksFetchedAt is not null)
+        if (await FindMineAsync(db, r, myBizNo, cancellationToken).ConfigureAwait(false) is { } found)
+        {
+            // 실제로 써낸 금액이 있으면 그 금액으로 사정률 차이를 본다.
+            rank = new MyRank(MyRankKind.Actual, found.Rank, found.Remark);
+            if (basis.RateOf(found.Amount) is { } actualRate) myRate = actualRate;
+        }
+        else if (r.RanksFetchedAt is not null)
         {
             var amounts = await db.BidResultRanks.AsNoTracking()
                 .Where(x => x.BidResultId == r.Id && x.Rank != null && x.Amount != null && x.Amount < myAmount)
