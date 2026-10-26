@@ -2,6 +2,7 @@
 @using BidNote.Application.Results
 @using BidNote.Domain.Results
 @inject IBidResultService Results
+@inject ICompetitorQueries Competitors
 @inject TimeProvider Clock
 
 <section class="panel bidresult" id="result">
@@ -72,6 +73,42 @@
         {
             <p class="tsub">업체별 순위를 받지 못했습니다. <button type="button" class="pill" @onclick="RefreshAsync">순위 받기</button> <span>@error</span></p>
         }
+
+        @if (!loading && competitors is { } c)
+        {
+            <div class="frequent">
+                <h3 class="sub">자주 만난 경쟁사 <span class="tsub" style="display:inline">이 공고 참가 업체 중 @(c.MinMeetings)번 이상 만난 곳 <b class="num">@c.FrequentCount.ToString("N0", CultureInfo.InvariantCulture)곳</b></span></h3>
+                @if (c.Companies.Count == 0)
+                {
+                    <p class="tsub">아직 없습니다. 순위를 받아 둔 공고가 쌓이면(수집할 때마다 내 면허 공고 1건씩) 자주 만나는 업체가 보입니다.</p>
+                }
+                else
+                {
+                    <div class="tbl">
+                        <table>
+                            <thead><tr><th>업체</th><th class="r">만난 공고</th><th class="r">1순위</th><th class="r">보통 쓰는 사정률</th><th class="r">이번 순위</th><th class="r">이번 사정률</th></tr></thead>
+                            <tbody>
+                                @foreach (var x in c.Companies)
+                                {
+                                    <tr>
+                                        <td><a href="/mine/competitors/@x.Summary.BizNo">@x.Summary.Name</a></td>
+                                        <td class="r num">@x.Summary.Meetings</td>
+                                        <td class="r num">@(x.Summary.Wins > 0 ? x.Summary.Wins.ToString(CultureInfo.InvariantCulture) : "-")</td>
+                                        <td class="r num">@Rate(x.Summary.MedianRate)</td>
+                                        <td class="r num">@(x.ThisRank?.ToString(CultureInfo.InvariantCulture) ?? "-")</td>
+                                        <td class="r num">@Rate(x.ThisRate)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    @if (c.FrequentCount > c.Companies.Count)
+                    {
+                        <p class="tsub">자주 만난 순으로 앞 @(c.Companies.Count)곳만 보여 줍니다. <a href="/mine/competitors">경쟁사 투찰 성향</a>에서 모두 볼 수 있습니다.</p>
+                    }
+                }
+            </div>
+        }
         <p class="tsub">사정률은 투찰금액을 기초금액·A값·낙찰하한율로 거꾸로 계산한 값입니다. 실제 사정률 = 예정가격 ÷ 기초금액.</p>
     }
 </section>
@@ -82,7 +119,11 @@
 
     private const int Top = 10;
 
+    /// <summary>"자주 만난" 기준 (이 공고 포함 만난 공고 수)과 보여 줄 업체 수.</summary>
+    private const int FrequentMinMeetings = 3, FrequentTop = 8;
+
     private BidResultView? view;
+    private NoticeCompetitors? competitors;
     private DateTime now;
     private bool loading;
     private string error = "";
@@ -92,6 +133,7 @@
         now = Clock.GetLocalNow().DateTime;
         view = await Results.GetAsync(NoticeId, Top, CancellationToken.None);
         loading = view?.NeedsRanks == true;
+        competitors = await Competitors.ForNoticeAsync(NoticeId, FrequentMinMeetings, FrequentTop, CancellationToken.None);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -114,6 +156,7 @@
             error = "순위를 받지 못했습니다: " + ex.Message;
         }
         view = await Results.GetAsync(NoticeId, Top, CancellationToken.None);
+        competitors = await Competitors.ForNoticeAsync(NoticeId, FrequentMinMeetings, FrequentTop, CancellationToken.None);
         loading = false;
         StateHasChanged();
     }

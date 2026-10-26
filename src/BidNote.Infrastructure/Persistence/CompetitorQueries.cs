@@ -38,6 +38,39 @@ public sealed class CompetitorQueries(IDbContextFactory<BidNoteDbContext> factor
         return new CompetitorOverview(notices, companies, [.. groups.Select(g => Summarize(g.BizNo, g.Name ?? "", g.Meetings, g.Wins, rates.GetValueOrDefault(g.BizNo, [])))]);
     }
 
+    public async Task<NoticeCompetitors?> ForNoticeAsync(int noticeId, int minMeetings, int top, CancellationToken cancellationToken)
+    {
+        await using var db = await factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var result = await db.BidResults.AsNoTracking().Where(r => r.NoticeId == noticeId)
+            .Select(r => new { r.Id, r.RanksFetchedAt }).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+        if (result?.RanksFetchedAt is null) return null;
+
+        string me = BidResultMath.BizNoKey(await db.CompanyProfiles.AsNoTracking().Select(x => x.BizNo).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false));
+        var participants = (await db.BidResultRanks.AsNoTracking()
+                .Where(x => x.BidResultId == result.Id && x.BizNo != "" && x.Amount != null)
+                .Select(x => x.BizNo).Distinct().ToListAsync(cancellationToken).ConfigureAwait(false))
+            .Where(b => me.Length == 0 || BidResultMath.BizNoKey(b) != me)
+            .ToList();
+        var frequent = await db.BidResultRanks.AsNoTracking()
+            .Where(x => participants.Contains(x.BizNo) && x.Amount != null)
+            .GroupBy(x => x.BizNo)
+            .Select(g => new { BizNo = g.Key, Name = g.Max(x => x.CompanyName), Meetings = g.Select(x => x.BidResultId).Distinct().Count(), Wins = g.Count(x => x.Rank == 1) })
+            .Where(x => x.Meetings >= minMeetings)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        var shown = frequent.OrderByDescending(x => x.Meetings).ThenByDescending(x => x.Wins).ThenBy(x => x.BizNo, StringComparer.Ordinal)
+            .Take(Math.Clamp(top, 1, 100)).ToList();
+        var bizNos = shown.Select(x => x.BizNo).ToList();
+        var rows = (await RowsAsync(db, x => bizNos.Contains(x.BizNo), cancellationToken).ConfigureAwait(false))
+            .GroupBy(x => x.BizNo).ToDictionary(g => g.Key, g => g.ToList());
+        return new NoticeCompetitors(frequent.Count, minMeetings, [.. shown.Select(g =>
+        {
+            var all = rows.GetValueOrDefault(g.BizNo, []);
+            var here = all.FirstOrDefault(x => x.NoticeId == noticeId);
+            return new NoticeCompetitor(Summarize(g.BizNo, g.Name ?? "", g.Meetings, g.Wins, all), here?.Rank, here?.Rate);
+        })]);
+    }
+
     public async Task<CompetitorDetail?> GetAsync(string bizNo, CancellationToken cancellationToken)
     {
         string key = (bizNo ?? "").Trim();

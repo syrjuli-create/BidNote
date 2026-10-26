@@ -117,6 +117,30 @@ public sealed class CompetitorQueriesTests : IDisposable
     }
 
     [Fact]
+    public async Task 공고_하나의_참가_업체_중_자주_만난_경쟁사를_세고_우리_회사는_뺀다()
+    {
+        AddOpened("N1", Now.AddDays(-3), ("1110000001", "가건설", 1, AmountFor(100.1)), ("2220000002", "나건설", 2, AmountFor(100.3)), ("9990000009", "우리건설", 3, AmountFor(100.4)));
+        AddOpened("N2", Now.AddDays(-2), ("1110000001", "가건설", 2, AmountFor(100.2)), ("9990000009", "우리건설", 1, AmountFor(100.0)));
+        int n3 = AddOpened("N3", Now.AddDays(-1), ("1110000001", "가건설", 2, AmountFor(100.0)), ("2220000002", "나건설", 1, AmountFor(99.9)),
+            ("3330000003", "다건설", 3, AmountFor(100.5)), ("9990000009", "우리건설", null, AmountFor(98.0)));
+        using (var db = testDb.NewContext())
+        {
+            db.CompanyProfiles.Add(new CompanyProfile { BizNo = "999-00-00009", UpdatedAt = Now });
+            db.SaveChanges();
+        }
+        var queries = new CompetitorQueries(new Factory(testDb));
+
+        var result = await queries.ForNoticeAsync(n3, 2, 10, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(2, result.FrequentCount); // 가건설 3번, 나건설 2번 (다건설 1번, 우리 회사는 뺀다)
+        Assert.Equal(["가건설", "나건설"], result.Companies.Select(c => c.Summary.Name));
+        Assert.Equal((2, 100.0), (result.Companies[0].ThisRank!.Value, Math.Round(result.Companies[0].ThisRate!.Value, 3)));
+        Assert.Equal(1, (await queries.ForNoticeAsync(n3, 3, 10, CancellationToken.None))!.FrequentCount);
+        Assert.Null(await queries.ForNoticeAsync(99999, 2, 10, CancellationToken.None)); // 순위를 받지 않은 공고
+    }
+
+    [Fact]
     public async Task 업체_상세는_공고별_투찰과_실제_사정률_내_사정률을_준다()
     {
         int n1 = AddOpened("N1", Now.AddDays(-3), ("1110000001", "가건설", 1, AmountFor(100.1)));

@@ -231,6 +231,15 @@ main { max-width: 1240px; margin: 0 auto; padding: 28px 24px 72px; }
 .hcol:hover .hbar, .hcol:focus-visible .hbar { opacity: .75; }
 .hcol:hover::after, .hcol:focus-visible::after { content: attr(data-tip); position: absolute; bottom: calc(100% - 24px); left: 50%; transform: translateX(-50%); z-index: 2; pointer-events: none;
     background: var(--ink); color: var(--surface); font-size: 12px; font-weight: 600; padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
+.histowrap { position: relative; }
+/* 내 사정률 표시선: 막대(브랜드색)와 겹쳐도 구분되게 잉크색 점선, 마우스 대상은 선보다 넓게 */
+.myline { position: absolute; top: 28px; bottom: 0; width: 12px; margin-left: -6px; outline: none; cursor: default; }
+.myline::before { content: ""; position: absolute; top: 0; bottom: 0; left: 5px; border-left: 2px dashed var(--ink); }
+.myline.edge::before { border-left-style: dotted; }
+.myline:hover::after, .myline:focus-visible::after { content: attr(data-tip); position: absolute; top: -26px; left: 50%; transform: translateX(-50%); z-index: 3; pointer-events: none;
+    background: var(--ink); color: var(--surface); font-size: 12px; font-weight: 600; padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
+.frequent { margin-top: 16px; }
+.frequent h3.sub { font-size: 15px; }
 .haxis { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 4px; }
 .licamounts .in.mainfields { width: 180px; text-align: left; }
 .licamounts td .tsub { display: block; font-size: 12px; }

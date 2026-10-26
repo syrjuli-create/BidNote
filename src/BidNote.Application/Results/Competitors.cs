@@ -22,8 +22,21 @@ public sealed record CompetitorDetail(CompetitorSummary Summary, IReadOnlyList<C
 /// <param name="NoticeCount">업체별 순위를 받아 둔 공고 수 (성향을 계산한 바탕).</param>
 public sealed record CompetitorOverview(int NoticeCount, int CompanyCount, IReadOnlyList<CompetitorSummary> Companies);
 
+/// <summary>공고 하나에 참가한 업체 중 자주 만난 경쟁사 한 곳. ThisRank·ThisRate는 이 공고에서의 순위·사정률.</summary>
+public sealed record NoticeCompetitor(CompetitorSummary Summary, int? ThisRank, double? ThisRate);
+
+/// <param name="FrequentCount">이 공고 참가 업체 중 <paramref name="MinMeetings"/>번 이상 만난 업체 수 (우리 회사 제외).</param>
+/// <param name="Companies">그중 자주 만난 순으로 앞의 몇 곳.</param>
+public sealed record NoticeCompetitors(int FrequentCount, int MinMeetings, IReadOnlyList<NoticeCompetitor> Companies);
+
 public interface ICompetitorQueries
 {
+    /// <summary>
+    /// 공고 하나에 참가한 업체 중 순위를 받아 둔 공고들에서 <paramref name="minMeetings"/>번 이상 만난 업체 (이 공고 포함, 우리 회사 제외).
+    /// 이 공고의 순위를 아직 받지 않았으면 null.
+    /// </summary>
+    Task<NoticeCompetitors?> ForNoticeAsync(int noticeId, int minMeetings, int top, CancellationToken cancellationToken);
+
     /// <summary>자주 만난 업체순. <paramref name="search"/>는 업체명 일부. 최소 <paramref name="minMeetings"/>번 만난 업체만.</summary>
     Task<CompetitorOverview> OverviewAsync(string? search, int minMeetings, int top, CancellationToken cancellationToken);
 
