@@ -159,12 +159,31 @@
         </section>
 
         <section class="panel screening">
-            <h2 class="sub">적격심사 참고 <span class="tsub">@ScreeningRules.Source 기준</span></h2>
+            <h2 class="sub">적격심사 참고 <span class="tsub">@(local ? LocalScreeningRules.Source : ScreeningRules.Source) 기준</span></h2>
             @if (notice.PerformanceLimited)
             {
                 <p class="warn-text"><b>실적제한 공고입니다.</b> 공고문에 정한 실적이 없으면 참여할 수 없습니다. 요구 실적은 나라장터 API에 없으니 공고문을 확인하세요.@(notice.PerformanceDocDueAt is { } docDue ? $" 실적 증명 서류 접수 마감 {Display.DateTimeText(docDue)}" : "")@(notice.PerformanceDocMethod.Length > 0 ? $" ({notice.PerformanceDocMethod})" : "")</p>
             }
-            @if (band is null)
+            @if (local)
+            {
+                @if (localBand is null)
+                {
+                    <p class="tsub">@(notice.EstimatedPrice is null ? "추정가격이 없어 금액 구간을 정할 수 없습니다." : "추정가격 300억 원 이상은 적격심사 대상이 아닙니다.")</p>
+                }
+                else
+                {
+                    <LocalBandView Band="localBand" MyRatio="localRatio" />
+                    @if (localRatio is { } ratio)
+                    {
+                        <p class="tsub">참고: 내 최근 5년 실적 ÷ 추정가격 = <b class="num">@ratio.ToString("0.#", CultureInfo.InvariantCulture)%</b> (표에 표시한 칸). 이 구간의 실적 기간은 '@localBand.Period'이고, 실적인정기간 4년 미만 업체·업종평가비율·주계약자 방식에 따라 점수가 달라 예상 점수는 계산하지 않습니다.</p>
+                    }
+                    else
+                    {
+                        <p class="tsub"><a href="/me">내 정보</a>에 이 공고 면허의 최근 실적을 넣으면 표에 내 실적 비율을 표시합니다.</p>
+                    }
+                }
+            }
+            else if (band is null)
             {
                 <p class="tsub">@(notice.EstimatedPrice is null ? "추정가격이 없어 금액 구간을 정할 수 없습니다." : "추정가격 100억 원 이상은 적격심사가 아닌 종합심사낙찰제 등이라 이 표를 쓰지 않습니다.")</p>
             }
@@ -192,7 +211,7 @@
                     }
                 }
             }
-            <p class="tsub">참고용 계산입니다. @(notice.Agency.Contains("조달청", StringComparison.Ordinal) ? "" : "이 공고는 조달청 발주가 아니어서(지자체 등) 배점·배수가 다를 수 있습니다. ")실제 심사는 공고문과 발주처 기준을 따릅니다. <a href="/tools/rates">투찰률·실적배수 표 보기</a></p>
+            <p class="tsub">참고용입니다. @(local ? "발주기관이 지방자치단체라 행정안전부 기준을 보여 줍니다. " : notice.Agency.Contains("조달청", StringComparison.Ordinal) ? "" : "조달청 발주가 아닌 국가기관·공기업 공고는 자체 기준이 조금 다를 수 있습니다. ")실제 심사는 공고문과 발주처 기준을 따릅니다. <a href="/tools/rates">투찰률·실적배수 표 보기</a></p>
         </section>
 
         <section class="panel">
@@ -277,6 +296,9 @@
     private ScreeningBand? band;
     private ExperienceEstimate? experience;
     private bool civil;
+    private bool local;
+    private LocalScreeningBand? localBand;
+    private double? localRatio;
     private DateTime now;
     private static readonly HashSet<string> MoneyLabels = ["예산금액", "추정가격"];
 
@@ -296,6 +318,13 @@
         var mine = company.Licenses.Where(l => groupNames.Contains(l.Name) && l.PerformanceAmount is > 0).OrderByDescending(l => l.PerformanceAmount).FirstOrDefault();
         civil = (mine?.Name ?? groupNames.FirstOrDefault() ?? "") == "토목공사업";
         experience = ScreeningRules.EstimateExperience(band, notice.BasePrice, notice.EstimatedPrice, mine?.PerformanceAmount, civil);
+
+        // 지자체 발주는 행정안전부 기준: 실적을 추정가격 대비 비율 등급으로 본다 (점수는 계산하지 않고 표에 비율만 표시).
+        local = LocalScreeningRules.IsLocalAgency(notice.Agency);
+        localBand = local ? LocalScreeningRules.BandFor(notice.EstimatedPrice) : null;
+        localRatio = local && mine?.PerformanceAmount is { } perf && notice.EstimatedPrice is > 0
+            ? perf * 100.0 / notice.EstimatedPrice.Value
+            : null;
     }
 
     private static string Multiple(double m) => m.ToString("0.##", CultureInfo.InvariantCulture);

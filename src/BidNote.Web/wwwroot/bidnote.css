@@ -343,3 +343,10 @@ tr.past td { color: #6b7280; }
 /* 공고 상세: 적격심사 참고 */
 .screening .warn-text { color: #b45309; }
 .screening p { margin: 8px 0 0; }
+
+/* 적격심사 등급표 */
+.grades table { font-size: 13px; }
+.grades caption { text-align: left; font-weight: 600; padding: 6px 0; }
+.grades th, .grades td { padding: 4px 6px; }
+.grades .mine { background: #fff4d6; font-weight: 700; }
+.sectionhead { font-size: 18px; margin: 18px 0 4px; }
