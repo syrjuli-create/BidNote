@@ -1,7 +1,7 @@
 @using System.Globalization
 @using BidNote.Domain.Bidding
 
-@* 지자체 적격심사 구간 하나: 배점과 시공경험 등급표 *@
+@* 지자체 적격심사 구간 하나: 배점과 시공경험 등급표. 내 실적 비율을 주면 들어가는 칸을 표시한다. *@
 <dl class="kv">
     <div><dt>금액 구간</dt><dd>@Band.Name (@Band.Appendix)</dd></div>
     <div><dt>시공경험</dt><dd>@Band.ExperiencePoints · @Band.Period</dd></div>
@@ -10,20 +10,21 @@
 <p class="tsub">@Band.Method</p>
 @foreach (var table in Band.Grades)
 {
-    int mine = MatchIndex(table);
+    bool showMine = MyRatio is not null && (MyTableTitle is null || MyTableTitle == table.Title);
+    int mine = showMine ? table.IndexFor(MyRatio!.Value, MyUnderFourYears) : -1;
     <div class="tbl grades">
         <table>
             <caption>@table.Title</caption>
             <thead>
-                <tr><th>등급</th>@for (int i = 0; i < table.Grades.Count; i++) { <th class="r @(i == mine ? "mine" : "")">@table.Grades[i].Grade</th> }</tr>
+                <tr><th>등급</th>@for (int i = 0; i < table.Grades.Count; i++) { <th class="r @Mark(i, mine)">@table.Grades[i].Grade</th> }</tr>
             </thead>
             <tbody>
-                <tr><th>@(table.HasShortPeriod ? "실적 비율 (4년 이상)" : "실적 비율")</th>@for (int i = 0; i < table.Grades.Count; i++) { <td class="r nw @(i == mine ? "mine" : "")">@table.Grades[i].Ratio</td> }</tr>
+                <tr><th>@(table.HasShortPeriod ? "실적 비율 (4년 이상)" : "실적 비율")</th>@for (int i = 0; i < table.Grades.Count; i++) { <td class="r nw @(MyUnderFourYears ? "" : Mark(i, mine))">@table.RatioText(i)</td> }</tr>
                 @if (table.HasShortPeriod)
                 {
-                    <tr><th>실적 비율 (4년 미만)</th>@foreach (var g in table.Grades) { <td class="r nw">@g.ShortRatio</td> }</tr>
+                    <tr><th>실적 비율 (4년 미만)</th>@for (int i = 0; i < table.Grades.Count; i++) { <td class="r nw @(MyUnderFourYears ? Mark(i, mine) : "")">@table.RatioText(i, shortPeriod: true)</td> }</tr>
                 }
-                <tr><th>점수</th>@for (int i = 0; i < table.Grades.Count; i++) { <td class="r num @(i == mine ? "mine" : "")"><b>@table.Grades[i].Points.ToString("0.0", CultureInfo.InvariantCulture)</b></td> }</tr>
+                <tr><th>점수</th>@for (int i = 0; i < table.Grades.Count; i++) { <td class="r num @Mark(i, mine)"><b>@table.Grades[i].Points.ToString("0.0", CultureInfo.InvariantCulture)</b></td> }</tr>
             </tbody>
         </table>
     </div>
@@ -32,19 +33,13 @@
 @code {
     [Parameter, EditorRequired] public LocalScreeningBand Band { get; set; } = default!;
 
-    /// <summary>참고로 표시할 내 실적 비율(%, 실적인정기간 4년 이상 기준). 들어가는 칸에 표시만 하고 점수는 계산하지 않는다.</summary>
+    /// <summary>표시할 내 실적 비율(%). 없으면 표시하지 않는다.</summary>
     [Parameter] public double? MyRatio { get; set; }
 
-    /// <summary>등급표는 높은 비율부터 "○% 이상"이 이어지고 마지막이 "○% 미만"이다. 내 비율이 처음 들어가는 칸 (없으면 -1).</summary>
-    private int MatchIndex(LocalGradeTable table)
-    {
-        if (MyRatio is not { } ratio) return -1;
-        for (int i = 0; i < table.Grades.Count; i++)
-        {
-            string text = table.Grades[i].Ratio;
-            if (!double.TryParse(text.Split('%')[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double limit)) continue;
-            if (text.Contains("이상", StringComparison.Ordinal) ? ratio >= limit : ratio < limit) return i;
-        }
-        return -1;
-    }
+    /// <summary>내 비율을 표시할 표 (종합/전문 중 하나). null이면 모든 표에 표시.</summary>
+    [Parameter] public string? MyTableTitle { get; set; }
+
+    [Parameter] public bool MyUnderFourYears { get; set; }
+
+    private static string Mark(int i, int mine) => i == mine ? "mine" : "";
 }

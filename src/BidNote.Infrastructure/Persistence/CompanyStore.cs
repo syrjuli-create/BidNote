@@ -16,7 +16,7 @@ public sealed class CompanyStore(IDbContextFactory<BidNoteDbContext> factory, Ti
         var locations = await db.CompanyLocations.AsNoTracking().ToListAsync(cancellationToken).ConfigureAwait(false);
         return new CompanyInfo(p?.Name ?? "", p?.BizNo ?? "", p?.Region ?? "", p?.Email ?? "",
             [.. licenses.OrderBy(x => x.Name, StringComparer.CurrentCulture)
-                .Select(x => new CompanyLicenseInfo(x.Name, x.CapacityAmount, x.PerformanceAmount) { MainFields = x.MainFieldNames })])
+                .Select(x => new CompanyLicenseInfo(x.Name, x.CapacityAmount, x.PerformanceAmount) { MainFields = x.MainFieldNames, RecentPerformanceAmount = x.RecentPerformanceAmount, UnderFourYears = x.UnderFourYears })])
         {
             Locations = [.. locations.OrderByDescending(x => x.IsHeadOffice).ThenBy(x => x.Name, StringComparer.CurrentCulture)
                 .Select(x => new CompanyLocationInfo(x.Name, x.IsHeadOffice))],
@@ -120,6 +120,8 @@ public sealed class CompanyStore(IDbContextFactory<BidNoteDbContext> factory, Ti
         if (row is null) return false;
         row.CapacityAmount = input.CapacityAmount is > 0 ? input.CapacityAmount : null;
         row.PerformanceAmount = input.PerformanceAmount is > 0 ? input.PerformanceAmount : null;
+        row.RecentPerformanceAmount = input.RecentPerformanceAmount is > 0 ? input.RecentPerformanceAmount : null;
+        row.UnderFourYears = input.UnderFourYears;
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         return true;
     }

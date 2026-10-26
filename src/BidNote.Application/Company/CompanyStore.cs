@@ -6,6 +6,12 @@ namespace BidNote.Application.Company;
 /// <param name="PerformanceAmount">최근 5년 실적 합계(원). 적격심사 시공경험 점수 예상에 쓴다.</param>
 public sealed record CompanyLicenseInfo(string Name, long? CapacityAmount, long? PerformanceAmount)
 {
+    /// <summary>최근 3년(+다음 해 1월 1일~공고일) 실적(원). 지자체 일부 구간이 쓴다.</summary>
+    public long? RecentPerformanceAmount { get; init; }
+
+    /// <summary>업종 실적인정기간 4년 미만.</summary>
+    public bool UnderFourYears { get; init; }
+
     /// <summary>이 업종의 주력분야. 비어 있으면 주력분야는 판단하지 않는다.</summary>
     public IReadOnlyList<string> MainFields { get; init; } = [];
 }
@@ -29,7 +35,7 @@ public sealed record LocationOption(string Name, int OpenNoticeCount);
 public sealed record CompanyProfileInput(string Name, string BizNo, string Region, string Email);
 
 /// <summary>면허 하나의 금액 정보 (원). 비운 값은 null.</summary>
-public sealed record LicenseAmountsInput(long? CapacityAmount, long? PerformanceAmount);
+public sealed record LicenseAmountsInput(long? CapacityAmount, long? PerformanceAmount, long? RecentPerformanceAmount = null, bool UnderFourYears = false);
 
 /// <summary>면허 고르기 목록 한 줄. 진행 중 공고의 면허 제한(대체 인정 업종 포함)에 나온 횟수.</summary>
 public sealed record LicenseOption(string Name, int OpenNoticeCount);
@@ -55,7 +61,7 @@ public interface ICompanyStore
 
     Task RemoveLicenseAsync(string name, CancellationToken cancellationToken);
 
-    /// <summary>면허 하나의 시공능력평가액·최근 5년 실적을 저장한다. 0 이하는 비운 것으로 본다. 없는 면허면 false.</summary>
+    /// <summary>면허 하나의 시공능력평가액·최근 5년·3년 실적·4년 미만 여부를 저장한다. 0 이하는 비운 것으로 본다. 없는 면허면 false.</summary>
     Task<bool> SaveLicenseAmountsAsync(string name, LicenseAmountsInput input, CancellationToken cancellationToken);
 
     /// <summary>면허 하나의 주력분야를 저장한다 (앞뒤 공백·빈 값·중복은 뺀다). 없는 면허면 false.</summary>

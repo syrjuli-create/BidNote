@@ -29,7 +29,7 @@
                 <div class="tbl">
                     <table class="licamounts">
                         <thead>
-                            <tr><th>면허</th><th class="r">최근 5년 실적 합계(억)</th><th class="r">시공능력평가액(억, 참고)</th><th>주력분야 (쉼표로 구분)</th><th></th></tr>
+                            <tr><th>면허</th><th class="r">최근 5년 실적(억)</th><th class="r">최근 3년 실적(억) <span class="tsub" style="display:inline" title="최근 3년 + 그다음 해 1월 1일부터 오늘까지. 지자체 10억 미만·50억 이상 공사가 이 실적으로 평가합니다">ⓘ</span></th><th>등록 4년 미만</th><th class="r">시공능력평가액(억, 참고)</th><th>주력분야 (쉼표로 구분)</th><th></th></tr>
                         </thead>
                         <tbody>
                             @foreach (var l in info.Licenses)
@@ -48,6 +48,8 @@
                                         }
                                     </td>
                                     <td class="r"><input class="in num" inputmode="decimal" aria-label="@(l.Name) 최근 5년 실적 합계(억 원)" placeholder="예: 12.5" @bind="d.Performance" /></td>
+                                    <td class="r"><input class="in num" inputmode="decimal" aria-label="@(l.Name) 최근 3년 실적 합계(억 원)" placeholder="예: 8" @bind="d.Recent" /></td>
+                                    <td class="c"><input type="checkbox" aria-label="@(l.Name) 업종 등록 4년 미만" @bind="d.UnderFourYears" /></td>
                                     <td class="r"><input class="in num" inputmode="decimal" aria-label="@(l.Name) 시공능력평가액(억 원)" placeholder="예: 35.2" @bind="d.Capacity" /></td>
                                     <td>
                                         <input class="in mainfields" aria-label="@(l.Name) 주력분야" placeholder="예: 포장공사" @bind="d.MainFields" />
@@ -65,7 +67,7 @@
                         </tbody>
                     </table>
                 </div>
-                <p class="tsub">최근 5년 실적은 공고 상세에서 <b>적격심사 시공경험 예상 점수</b>를 계산하는 데 씁니다. 실적이 모자라도 입찰은 할 수 있고 점수만 낮아지므로 참여 가능에서 빼지 않습니다 (금액 구간별 실적 배수는 <a href="/tools/rates">투찰률·실적배수 표</a>). 시공능력평가액은 참고로만 보관합니다. 주력분야는 공고 상세에 맞는지만 알려 주고 참여 가능에서 빼지는 않습니다.</p>
+                <p class="tsub">실적은 공고 상세에서 <b>적격심사 시공경험 예상 점수</b>를 계산하는 데 씁니다 — 조달청·지자체 30억~10억 구간은 최근 5년, 지자체 10억 미만·50억 이상 구간은 최근 3년(+그다음 해 1월 1일~오늘) 실적, 지자체 10억 미만 구간은 업종 등록 4년 미만이면 기준이 낮아집니다. 실적이 모자라도 입찰은 할 수 있고 점수만 낮아지므로 참여 가능에서 빼지 않습니다 (금액 구간별 실적 배수는 <a href="/tools/rates">투찰률·실적배수 표</a>). 시공능력평가액은 참고로만 보관합니다. 주력분야는 공고 상세에 맞는지만 알려 주고 참여 가능에서 빼지는 않습니다.</p>
             }
             <div class="row" style="margin-top:12px">
                 <input class="in" list="license-options" placeholder="면허 이름 (예: 지반조성ㆍ포장공사업)" aria-label="추가할 면허"
@@ -190,6 +192,8 @@
     {
         public string Capacity { get; set; } = "";
         public string Performance { get; set; } = "";
+        public string Recent { get; set; } = "";
+        public bool UnderFourYears { get; set; }
         public string MainFields { get; set; } = "";
     }
 
@@ -206,6 +210,8 @@
             {
                 Capacity = l.CapacityAmount is { } c ? (c / Eok).ToString("0.####", CultureInfo.InvariantCulture) : "",
                 Performance = l.PerformanceAmount is { } p ? (p / Eok).ToString("0.####", CultureInfo.InvariantCulture) : "",
+                Recent = l.RecentPerformanceAmount is { } r ? (r / Eok).ToString("0.####", CultureInfo.InvariantCulture) : "",
+                UnderFourYears = l.UnderFourYears,
                 MainFields = string.Join(", ", l.MainFields),
             };
             drafts[l.Name] = d;
@@ -227,7 +233,7 @@
     private async Task SaveAmountsAsync(string name)
     {
         var d = drafts[name];
-        if (!TryNumber(d.Capacity, out var capacity) || !TryNumber(d.Performance, out var performance))
+        if (!TryNumber(d.Capacity, out var capacity) || !TryNumber(d.Performance, out var performance) || !TryNumber(d.Recent, out var recent))
         {
             licenseStatus = $"'{name}'의 금액은 숫자로 넣어 주세요 (억 원 단위, 예: 35.2).";
             return;
@@ -235,7 +241,9 @@
         busy = true;
         await Store.SaveLicenseAmountsAsync(name, new LicenseAmountsInput(
             capacity is { } c ? (long)Math.Round(c * Eok) : null,
-            performance is { } p ? (long)Math.Round(p * Eok) : null), CancellationToken.None);
+            performance is { } p ? (long)Math.Round(p * Eok) : null,
+            recent is { } r ? (long)Math.Round(r * Eok) : null,
+            d.UnderFourYears), CancellationToken.None);
         await Store.SaveLicenseMainFieldsAsync(name, d.MainFields.Split([',', '，'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), CancellationToken.None);
         drafts.Remove(name);
         await LoadAsync();

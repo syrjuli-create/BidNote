@@ -39,6 +39,15 @@ public class CompanyLicense
     /// </summary>
     public long? PerformanceAmount { get; set; }
 
+    /// <summary>
+    /// 이 업종의 최근 3년 실적 + 그다음 해 1월 1일부터 입찰공고일까지 실적(원). 지자체 4억 미만·10억 미만 구간과
+    /// 50억 이상 구간이 이 실적으로 평가한다.
+    /// </summary>
+    public long? RecentPerformanceAmount { get; set; }
+
+    /// <summary>이 업종의 실적인정기간(등록 기간)이 4년 미만이다. 지자체 10억 미만 구간은 등급 기준이 낮아진다.</summary>
+    public bool UnderFourYears { get; set; }
+
     /// <summary>이 업종의 주력분야 (예: 포장공사). '|'로 잇는다. 비어 있으면 주력분야는 따지지 않는다.</summary>
     public string MainFields { get; set; } = "";
 

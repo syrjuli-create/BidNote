@@ -172,15 +172,24 @@
                 }
                 else
                 {
-                    <LocalBandView Band="localBand" MyRatio="localRatio" />
-                    @if (localRatio is { } ratio)
+                    @if (localExperience is { } lx)
                     {
-                        <p class="tsub">참고: 내 최근 5년 실적 ÷ 추정가격 = <b class="num">@ratio.ToString("0.#", CultureInfo.InvariantCulture)%</b> (표에 표시한 칸). 이 구간의 실적 기간은 '@localBand.Period'이고, 실적인정기간 4년 미만 업체·업종평가비율·주계약자 방식에 따라 점수가 달라 예상 점수는 계산하지 않습니다.</p>
+                        <p class="@(lx.Points < lx.MaxPoints ? "warn-text" : "")">
+                            시공경험 예상 <b class="num">@lx.Points.ToString("0.##", CultureInfo.InvariantCulture) / @lx.MaxPoints.ToString("0.##", CultureInfo.InvariantCulture)점</b>
+                            @(lx.Grade.Length > 0 ? $"({lx.Grade}등급)" : "")
+                            — @(lx.PeriodLabel) 실적 ÷ 추정가격 = <span class="num">@lx.RatioPercent.ToString("0.#", CultureInfo.InvariantCulture)%</span>, @lx.TableTitle
+                        </p>
+                        <p class="tsub">업종 하나로 입찰한다고 보고(업종평가비율 100%) 계산했습니다. 복합 업종·주계약자 관리방식·실적제한 입찰이면 공고문의 업종별 추정가격으로 다시 확인하세요. @(localMine is { } lm ? $"계산에 쓴 면허: {lm.Name}" : "")</p>
+                    }
+                    else if (localBand.Kind == LocalExperienceMethod.NotEstimated)
+                    {
+                        <p class="tsub">이 구간은 원문 산식이 복잡해 예상 점수를 계산하지 않습니다.</p>
                     }
                     else
                     {
-                        <p class="tsub"><a href="/me">내 정보</a>에 이 공고 면허의 최근 실적을 넣으면 표에 내 실적 비율을 표시합니다.</p>
+                        <p class="tsub"><a href="/me">내 정보</a>에 이 공고 면허의 @(localBand.Kind == LocalExperienceMethod.Grade5Years ? "최근 5년" : "최근 3년") 실적을 넣으면 시공경험 예상 점수를 계산합니다.</p>
                     }
+                    <LocalBandView Band="localBand" MyRatio="localExperience?.RatioPercent" MyTableTitle="@(localExperience?.TableTitle)" MyUnderFourYears="localMine?.UnderFourYears == true && localBand.Kind != LocalExperienceMethod.Grade5Years" />
                 }
             }
             else if (band is null)
@@ -298,7 +307,8 @@
     private bool civil;
     private bool local;
     private LocalScreeningBand? localBand;
-    private double? localRatio;
+    private LocalExperienceEstimate? localExperience;
+    private BidNote.Application.Company.CompanyLicenseInfo? localMine;
     private DateTime now;
     private static readonly HashSet<string> MoneyLabels = ["예산금액", "추정가격"];
 
@@ -322,9 +332,17 @@
         // 지자체 발주는 행정안전부 기준: 실적을 추정가격 대비 비율 등급으로 본다 (점수는 계산하지 않고 표에 비율만 표시).
         local = LocalScreeningRules.IsLocalAgency(notice.Agency);
         localBand = local ? LocalScreeningRules.BandFor(notice.EstimatedPrice) : null;
-        localRatio = local && mine?.PerformanceAmount is { } perf && notice.EstimatedPrice is > 0
-            ? perf * 100.0 / notice.EstimatedPrice.Value
-            : null;
+        if (localBand is not null)
+        {
+            // 이 구간이 쓰는 실적(5년/3년)을 넣은 면허 중 실적이 가장 큰 것으로 본다.
+            bool five = localBand.Kind == LocalExperienceMethod.Grade5Years;
+            localMine = company.Licenses
+                .Where(l => groupNames.Contains(l.Name) && (five ? l.PerformanceAmount : l.RecentPerformanceAmount) is > 0)
+                .OrderByDescending(l => five ? l.PerformanceAmount : l.RecentPerformanceAmount).FirstOrDefault();
+            string license = localMine?.Name ?? groupNames.FirstOrDefault() ?? notice.License;
+            localExperience = LocalScreeningRules.EstimateExperience(localBand, notice.EstimatedPrice, LocalScreeningRules.IsGeneralLicense(license),
+                localMine?.PerformanceAmount, localMine?.RecentPerformanceAmount, localMine?.UnderFourYears == true);
+        }
     }
 
     private static string Multiple(double m) => m.ToString("0.##", CultureInfo.InvariantCulture);

@@ -190,6 +190,12 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                     b.Property<long?>("PerformanceAmount")
                         .HasColumnType("INTEGER");
 
+                    b.Property<long?>("RecentPerformanceAmount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("UnderFourYears")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Name")
