@@ -126,9 +126,9 @@
         busy = true;
         try
         {
-            await Store.SaveAsync(new MyBidInput(NoticeId, rate!.Value, amount!.Value, memo), CancellationToken.None);
+            bool moved = await Store.SaveAsync(new MyBidInput(NoticeId, rate!.Value, amount!.Value, memo), CancellationToken.None);
             saved = await Store.GetAsync(NoticeId, CancellationToken.None);
-            status = "투찰 기록을 저장했습니다.";
+            status = moved ? "투찰 기록을 저장하고, 관심 공고를 '투찰 완료' 폴더로 옮겼습니다." : "투찰 기록을 저장했습니다.";
         }
         finally { busy = false; }
     }

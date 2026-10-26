@@ -37,8 +37,11 @@ public sealed record MyBidItem(
 
 public interface IMyBidStore
 {
-    /// <summary>투찰 기록을 저장한다. 이미 있으면 고친다. 사정률·금액이 0 이하이면 예외.</summary>
-    Task SaveAsync(MyBidInput input, CancellationToken cancellationToken);
+    /// <summary>
+    /// 투찰 기록을 저장한다. 이미 있으면 고친다. 사정률·금액이 0 이하이면 예외.
+    /// 관심 공고(휴지통 제외)에 담긴 공고면 '투찰 완료' 폴더로 옮기고, 옮겼으면 true를 돌려준다.
+    /// </summary>
+    Task<bool> SaveAsync(MyBidInput input, CancellationToken cancellationToken);
 
     Task RemoveAsync(int noticeId, CancellationToken cancellationToken);
 

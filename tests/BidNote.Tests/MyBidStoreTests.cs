@@ -1,4 +1,5 @@
 using BidNote.Application.Bidding;
+using BidNote.Domain.Favorites;
 using BidNote.Domain.Notices;
 using BidNote.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -57,6 +58,30 @@ public sealed class MyBidStoreTests : IDisposable
         Assert.Equal((99.5, 87_300_000L, 100_000_000L, 5_000_000L, ""), (bid.AssessmentRate, bid.BidAmount, bid.BasePriceAtBid!.Value, bid.AValueAtBid!.Value, bid.Memo));
         using var db = testDb.NewContext();
         Assert.Equal(1, db.MyBids.Count());
+    }
+
+    [Fact]
+    public async Task 관심_공고에_담긴_공고면_투찰_완료_폴더로_옮기고_휴지통이나_안_담긴_공고는_건드리지_않는다()
+    {
+        int fav = AddNotice("FAV", Now.AddDays(2));
+        int trashed = AddNotice("TRASH", Now.AddDays(2));
+        int plain = AddNotice("PLAIN", Now.AddDays(2));
+        using (var db = testDb.NewContext())
+        {
+            db.FavoriteNotices.Add(new FavoriteNotice { NoticeId = fav, Folder = FavoriteFolder.Planned, AddedAt = Now, UpdatedAt = Now });
+            db.FavoriteNotices.Add(new FavoriteNotice { NoticeId = trashed, Folder = FavoriteFolder.Reviewing, TrashedAt = Now, AddedAt = Now, UpdatedAt = Now });
+            db.SaveChanges();
+        }
+
+        Assert.True(await store.SaveAsync(new MyBidInput(fav, 100, 1_000), CancellationToken.None));
+        Assert.False(await store.SaveAsync(new MyBidInput(fav, 100.1, 1_001), CancellationToken.None)); // 이미 투찰 완료
+        Assert.False(await store.SaveAsync(new MyBidInput(trashed, 100, 1_000), CancellationToken.None));
+        Assert.False(await store.SaveAsync(new MyBidInput(plain, 100, 1_000), CancellationToken.None));
+
+        using var check = testDb.NewContext();
+        Assert.Equal(FavoriteFolder.Submitted, check.FavoriteNotices.Single(f => f.NoticeId == fav).Folder);
+        Assert.Equal(FavoriteFolder.Reviewing, check.FavoriteNotices.Single(f => f.NoticeId == trashed).Folder);
+        Assert.False(check.FavoriteNotices.Any(f => f.NoticeId == plain));
     }
 
     [Fact]
