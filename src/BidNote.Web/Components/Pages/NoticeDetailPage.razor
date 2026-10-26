@@ -108,17 +108,9 @@
 
         <section class="panel">
             <h2 class="sub">면허(업종) 제한
-                @if (eligibility is { Kind: EligibilityKind.Eligible, Amount: not AmountVerdict.Over, Region: RegionVerdict.Outside })
+                @if (eligibility is { Kind: EligibilityKind.Eligible, Region: RegionVerdict.Outside })
                 {
                     <span class="chip warn">면허는 맞지만 참가 가능 지역 밖</span>
-                }
-                else if (eligibility is { Kind: EligibilityKind.Eligible, Amount: AmountVerdict.Over } over)
-                {
-                    <span class="chip warn">면허는 맞지만 금액 상한 초과 (상한 @Display.Eok(over.AmountLimit), 추정가격 @Display.Eok(notice.EstimatedPrice))</span>
-                }
-                else if (eligibility is { Kind: EligibilityKind.Eligible, Amount: AmountVerdict.Within } within)
-                {
-                    <span class="chip ok">참여 가능 (금액 상한 @Display.Eok(within.AmountLimit) 이내)</span>
                 }
                 else if (eligibility is { Kind: EligibilityKind.Eligible })
                 {
@@ -164,6 +156,43 @@
                     <p class="tsub"><a href="/me">내 정보</a>에 면허를 등록하면 참여할 수 있는지 바로 알려 드립니다.</p>
                 }
             }
+        </section>
+
+        <section class="panel screening">
+            <h2 class="sub">적격심사 참고 <span class="tsub">@ScreeningRules.Source 기준</span></h2>
+            @if (notice.PerformanceLimited)
+            {
+                <p class="warn-text"><b>실적제한 공고입니다.</b> 공고문에 정한 실적이 없으면 참여할 수 없습니다. 요구 실적은 나라장터 API에 없으니 공고문을 확인하세요.@(notice.PerformanceDocDueAt is { } docDue ? $" 실적 증명 서류 접수 마감 {Display.DateTimeText(docDue)}" : "")@(notice.PerformanceDocMethod.Length > 0 ? $" ({notice.PerformanceDocMethod})" : "")</p>
+            }
+            @if (band is null)
+            {
+                <p class="tsub">@(notice.EstimatedPrice is null ? "추정가격이 없어 금액 구간을 정할 수 없습니다." : "추정가격 100억 원 이상은 적격심사가 아닌 종합심사낙찰제 등이라 이 표를 쓰지 않습니다.")</p>
+            }
+            else
+            {
+                <dl class="kv">
+                    <div><dt>금액 구간</dt><dd>@band.Name@(band.Trade == ScreeningTrade.Special ? " (전기·정보통신·소방·국가유산)" : "")</dd></div>
+                    <div><dt>시공경험</dt><dd>@(band.EvaluatesExperience ? $"{band.ExperiencePoints}점 · 실적 {ScreeningRules.PerformanceYears}년 · 배수 {Multiple(band.MultipleFor(civil))}배" : "평가 안 함")</dd></div>
+                    <div><dt>입찰가격 배점</dt><dd class="num">@(band.PricePoints)점</dd></div>
+                    <div><dt>기준 낙찰하한율</dt><dd class="num">@band.LowerLimitRate.ToString("0.###", CultureInfo.InvariantCulture)%@(notice.LowerLimitRate > 0 && Math.Abs(notice.LowerLimitRate - band.LowerLimitRate) > 0.0005 ? $" (이 공고 {notice.LowerLimitRate.ToString("0.###", CultureInfo.InvariantCulture)}% — 공고 기준이 다름)" : "")</dd></div>
+                </dl>
+                @if (band.EvaluatesExperience)
+                {
+                    @if (experience is { } x)
+                    {
+                        <p class="@(x.Full ? "" : "warn-text")">
+                            시공경험 예상 <b class="num">@x.Points.ToString("0.##", CultureInfo.InvariantCulture) / @(x.Band.ExperiencePoints)점</b>
+                            — 내 실적 @Display.Eok(x.Performance) / 만점 기준 @Display.Eok(x.RequiredPerformance) (기초금액 × @Multiple(x.Multiple)배)
+                            @if (!x.Full) { <span>· 실적이 모자라 점수가 깎입니다. 입찰은 할 수 있습니다.</span> }
+                        </p>
+                    }
+                    else
+                    {
+                        <p class="tsub"><a href="/me">내 정보</a>에 이 공고 면허의 최근 5년 실적을 넣으면 시공경험 예상 점수를 계산합니다.</p>
+                    }
+                }
+            }
+            <p class="tsub">참고용 계산입니다. @(notice.Agency.Contains("조달청", StringComparison.Ordinal) ? "" : "이 공고는 조달청 발주가 아니어서(지자체 등) 배점·배수가 다를 수 있습니다. ")실제 심사는 공고문과 발주처 기준을 따릅니다. <a href="/tools/rates">투찰률·실적배수 표 보기</a></p>
         </section>
 
         <section class="panel">
@@ -245,6 +274,9 @@
 
     private NoticeDetail? notice;
     private Eligibility? eligibility;
+    private ScreeningBand? band;
+    private ExperienceEstimate? experience;
+    private bool civil;
     private DateTime now;
     private static readonly HashSet<string> MoneyLabels = ["예산금액", "추정가격"];
 
@@ -253,7 +285,20 @@
         now = Clock.GetLocalNow().DateTime;
         notice = await Queries.GetAsync(Id, CancellationToken.None);
         eligibility = notice is null ? null : await Company.CheckAsync(Id, CancellationToken.None);
+        if (notice is null) return;
+
+        var names = notice.Licenses.SelectMany(g => g.Items.Select(i => i.Name)).Append(notice.License).Where(n => n.Length > 0).Distinct().ToList();
+        band = ScreeningRules.BandFor(notice.EstimatedPrice, ScreeningRules.TradeOf(names));
+        // 시공경험은 참여에 쓰는 면허의 실적으로 본다: 충족한(또는 가장 가까운) 그룹의 면허 중 내가 실적을 넣은 것의 가장 큰 값.
+        var company = await Company.GetAsync(CancellationToken.None);
+        var group = notice.Licenses.FirstOrDefault(g => g.GroupNo == eligibility?.GroupNo) ?? notice.Licenses.FirstOrDefault();
+        List<string> groupNames = group is null ? (notice.License.Length > 0 ? [notice.License] : []) : [.. group.Items.SelectMany(i => i.Alternatives.Prepend(i.Name))];
+        var mine = company.Licenses.Where(l => groupNames.Contains(l.Name) && l.PerformanceAmount is > 0).OrderByDescending(l => l.PerformanceAmount).FirstOrDefault();
+        civil = (mine?.Name ?? groupNames.FirstOrDefault() ?? "") == "토목공사업";
+        experience = ScreeningRules.EstimateExperience(band, notice.BasePrice, notice.EstimatedPrice, mine?.PerformanceAmount, civil);
     }
+
+    private static string Multiple(double m) => m.ToString("0.##", CultureInfo.InvariantCulture);
 
     private static string Or(string s) => string.IsNullOrWhiteSpace(s) ? "-" : s;
 

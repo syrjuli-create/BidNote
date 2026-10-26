@@ -63,7 +63,9 @@ dotnet run --project src/BidNote.Web --launch-profile http   # http://localhost:
 
 - 주소: `https://apis.data.go.kr/1230000/ad/BidPublicInfoService/` (차세대 경로만 동작, 구 `…04/05`는 400)
 - `getBidPblancListInfoCnstwk` 공사 공고 목록 — 공고차수 `bidNtceOrd`는 "000" 3자리, 날짜 "yyyy-MM-dd HH:mm:ss", 지역 `cnstrtsiteRgnNm`(시도+시군구), 계약방법 `cntrctCnclsMthdNm`("제한경쟁(3등급)" → "제한경쟁"으로 묶어 저장), 종류 `ntceKindNm`("취소" 포함이면 취소 공고). **기초금액은 없다.**
-- 공고 목록의 `presmptPrce` = 추정가격(원, 문자열 정수). `Notice.EstimatedPrice`에 저장, 입찰 가능 금액 판정의 기준. 금액 상한 규칙은 `LicenseEligibility.AmountLimit` 한 곳.
+- 공고 목록의 `presmptPrce` = 추정가격(원, 문자열 정수). `Notice.EstimatedPrice`에 저장, 적격심사 금액 구간(`ScreeningRules.BandFor`)의 기준.
+- **실적은 참가 자격이 아니다.** 적격심사에서 실적은 시공경험 점수만 정한다(실적이 모자라도 입찰 가능). 참여 가능(`Eligibility.CanBid`)은 면허·지역만 본다. 예외는 실적제한경쟁 공고 — 원문 `arsltCmptYn`=Y(약 0.8%), 실적 서류 마감 `arsltApplDocRcptDt`·방법 `arsltApplDocRcptMthdNm`. 요구 실적 금액은 API에 없다(공고문).
+- 적격심사 기준표는 `ScreeningRules.Bands` 한 곳(조달청 지침 제6481호). 기준 낙찰하한율은 수집 공고의 `sucsfbidLwltRate`와 구간마다 일치했다(2억~10억 89.745, 10억~50억 88.745, 50억~100억 87.495). 지자체 기준은 아직 없음.
 - `getBidPblancListInfoLicenseLimit` 면허 제한 (`lcnsLmtNm`, "/0037" 같은 코드 꼬리는 뗀다)
   - **같은 `lmtGrpNo` 안은 "그리고", 그룹끼리는 "또는"** (2026-10-25 실데이터 확인: 그룹1 토목건축 / 그룹2 건축, 한 그룹에 일반소방(전기)+(기계)). 판정은 `LicenseEligibility` 한 곳.
   - `indstrytyMfrcFldList` = 주력분야 "[1^포장공사]", "[1^토공사^포장공사]", "[1^도장공사],[2^습식·방수공사]" (줄의 약 27%). `NoticeLicense.MainFields`에 묶음 '|', 분야 '^'로 저장. 공고 `indstrytyMfrcFldEvlYn`이 대부분 N이라 판정에는 넣지 않고 참고로만 (`MainFieldEligibility`).

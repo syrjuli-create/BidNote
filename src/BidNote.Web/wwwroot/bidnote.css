@@ -339,3 +339,7 @@ tr.past td { color: #6b7280; }
 .openings .ofilter .f.grow { flex: 1 1 260px; }
 .openings .ofilter input.in { width: 100%; }
 .results > .minetabs { margin-bottom: 10px; }
+
+/* 공고 상세: 적격심사 참고 */
+.screening .warn-text { color: #b45309; }
+.screening p { margin: 8px 0 0; }

@@ -35,6 +35,9 @@ public sealed record NoticeDetail
     public string License { get; init; } = "";
     public long? BasePrice { get; init; }
     public long? EstimatedPrice { get; init; }
+    public bool PerformanceLimited { get; init; }
+    public DateTime? PerformanceDocDueAt { get; init; }
+    public string PerformanceDocMethod { get; init; } = "";
     public DateTime? BasePriceOpenedAt { get; init; }
     public string ReservePriceRange { get; init; } = "";
     public long? AValue { get; init; }

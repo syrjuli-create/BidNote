@@ -1,0 +1,64 @@
+@page "/tools/rates"
+@using System.Globalization
+@using BidNote.Domain.Bidding
+
+<PageTitle>투찰률·실적배수 표 · 입찰노트</PageTitle>
+
+<div class="stack rates">
+    <ToolTabs Current="rates" />
+    <div class="listhead">
+        <h1>투찰률·실적배수 표</h1>
+    </div>
+    <p class="tsub">@ScreeningRules.Source. 추정가격 구간마다 적격심사 배점과 시공경험 실적 배수, 낙찰하한율이 다릅니다. 낙찰하한율은 2026년 10월에 모은 공고 1만여 건의 값과 구간마다 같았습니다.</p>
+
+    @foreach (var (trade, title) in Trades)
+    {
+        <section class="panel">
+            <h2 class="sub">@title</h2>
+            <div class="tbl">
+                <table>
+                    <thead>
+                        <tr><th>추정가격</th><th class="r">시공경험</th><th class="r">실적 배수</th><th class="r">경영상태</th><th class="r">입찰가격</th><th class="r">낙찰하한율</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var b in ScreeningRules.Bands.Where(b => b.Trade == trade))
+                        {
+                            <tr>
+                                <td class="nw">@b.Name</td>
+                                <td class="r num">@(b.EvaluatesExperience ? $"{b.ExperiencePoints}점 ({ScreeningRules.PerformanceYears}년)" : "평가 안 함")</td>
+                                <td class="r num">@(b.EvaluatesExperience ? Multiple(b) : "-")</td>
+                                <td class="r num">@(b.ManagementPoints)점</td>
+                                <td class="r num">@(b.PricePoints)점</td>
+                                <td class="r num"><b>@b.LowerLimitRate.ToString("0.###", CultureInfo.InvariantCulture)%</b></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+
+    <section class="panel">
+        <h2 class="sub">읽는 법</h2>
+        <ul class="tsub">
+            <li><b>시공경험 예상 점수</b> = 배점 × min(1, 최근 5년 실적 ÷ (기초금액 × 실적 배수)). 예: 추정가격 8억 원 공사(10억 미만~3억 이상)는 기초금액 8억 × 0.5 = 4억 원 실적이면 만점 10점, 2억 원이면 5점.</li>
+            <li>실적이 모자라도 <b>입찰은 할 수 있고</b> 점수만 낮아집니다. 공고 상세의 '적격심사 참고'에 공고마다 예상 점수를 보여 줍니다 (<a href="/me">내 정보</a>에 면허별 최근 5년 실적을 넣으세요).</li>
+            <li>예외: <b>실적제한 공고</b>는 공고문에 정한 실적이 없으면 참여할 수 없습니다. 공고 상세에 따로 표시합니다.</li>
+            <li>추정가격 100억 원 이상은 적격심사가 아닌 종합심사낙찰제 등입니다.</li>
+            <li>지방자치단체 발주 공사(행정안전부 낙찰자 결정기준)는 구간과 배점이 다를 수 있습니다. 아직 넣지 않았습니다. 실제 심사는 공고문과 발주처 기준을 따릅니다.</li>
+        </ul>
+    </section>
+</div>
+
+@code {
+    private static readonly (ScreeningTrade Trade, string Title)[] Trades =
+    [
+        (ScreeningTrade.General, "일반 공사 (종합·전문)"),
+        (ScreeningTrade.Special, "전기·정보통신·소방시설·국가유산 공사"),
+    ];
+
+    private static string Multiple(ScreeningBand b) =>
+        b.CivilMultiple is { } civil
+            ? $"{b.Multiple.ToString("0.##", CultureInfo.InvariantCulture)}배 (토목 {civil.ToString("0.##", CultureInfo.InvariantCulture)}배)"
+            : $"{b.Multiple.ToString("0.##", CultureInfo.InvariantCulture)}배";
+}

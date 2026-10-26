@@ -202,7 +202,7 @@ public sealed class RegionLimitServiceTests : IDisposable
         await store.AddLicenseAsync("토목공사업", CancellationToken.None);
 
         // 소재지를 안 넣었으면 지역은 모름 → 빼지 않는다
-        Assert.Equal(new EligibilitySummary(3, 0, 0, 0, 0, 2), await store.SummaryAsync(Now, CancellationToken.None));
+        Assert.Equal(new EligibilitySummary(3, 0, 0, 0, 2), await store.SummaryAsync(Now, CancellationToken.None));
 
         Assert.True(await store.AddLocationAsync("  충청북도   충주시 ", true, CancellationToken.None));
         Assert.False(await store.AddLocationAsync("충청북도 충주시", false, CancellationToken.None));
@@ -210,7 +210,7 @@ public sealed class RegionLimitServiceTests : IDisposable
         Assert.Equal([new CompanyLocationInfo("대전광역시 서구", true), new CompanyLocationInfo("충청북도 충주시", false)],
             (await store.GetAsync(CancellationToken.None)).Locations);
 
-        Assert.Equal(new EligibilitySummary(2, 0, 0, 0, 1, 0), await store.SummaryAsync(Now, CancellationToken.None));
+        Assert.Equal(new EligibilitySummary(2, 0, 0, 1, 0), await store.SummaryAsync(Now, CancellationToken.None));
         Assert.Equal(RegionVerdict.Outside, (await store.CheckAsync(outside, CancellationToken.None))!.Region);
         using var ctx = testDb.NewContext();
         var list = await new NoticeRepository(ctx).SearchAsync(new NoticeFilter { MyLicensesOnly = true }, Now, CancellationToken.None);

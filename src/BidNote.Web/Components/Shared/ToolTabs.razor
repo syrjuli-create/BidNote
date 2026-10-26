@@ -1,0 +1,9 @@
+@* '입찰 도구' 메뉴 안의 화면 바꾸기 *@
+<nav class="minetabs" aria-label="입찰 도구">
+    <a href="/tools" class="@(Current == "calc" ? "on" : "")" aria-current="@(Current == "calc" ? "page" : null)">투찰금액 계산기</a>
+    <a href="/tools/rates" class="@(Current == "rates" ? "on" : "")" aria-current="@(Current == "rates" ? "page" : null)">투찰률·실적배수 표</a>
+</nav>
+
+@code {
+    [Parameter, EditorRequired] public string Current { get; set; } = "";
+}

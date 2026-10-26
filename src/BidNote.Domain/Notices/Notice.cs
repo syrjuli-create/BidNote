@@ -36,6 +36,15 @@ public class Notice
     /// <summary>추정가격(원). 입찰참가자격·적격심사 금액 기준으로 쓴다. 공고 목록 원문에 있다.</summary>
     public long? EstimatedPrice { get; set; }
 
+    /// <summary>실적제한경쟁 공고 (원문 arsltCmptYn=Y). 요구 실적 금액은 API에 없어 공고문에서 확인해야 한다.</summary>
+    public bool PerformanceLimited { get; set; }
+
+    /// <summary>실적 증명 서류 접수 마감 (원문 arsltApplDocRcptDt).</summary>
+    public DateTime? PerformanceDocDueAt { get; set; }
+
+    /// <summary>실적 증명 서류 접수 방법 (원문 arsltApplDocRcptMthdNm, 예: 수기·전자문서).</summary>
+    public string PerformanceDocMethod { get; set; } = "";
+
     /// <summary>낙찰하한율(%).</summary>
     public double LowerLimitRate { get; set; }
 

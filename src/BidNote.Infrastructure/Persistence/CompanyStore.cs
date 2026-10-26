@@ -16,7 +16,7 @@ public sealed class CompanyStore(IDbContextFactory<BidNoteDbContext> factory, Ti
         var locations = await db.CompanyLocations.AsNoTracking().ToListAsync(cancellationToken).ConfigureAwait(false);
         return new CompanyInfo(p?.Name ?? "", p?.BizNo ?? "", p?.Region ?? "", p?.Email ?? "",
             [.. licenses.OrderBy(x => x.Name, StringComparer.CurrentCulture)
-                .Select(x => new CompanyLicenseInfo(x.Name, x.CapacityAmount, x.PerformanceAmount, x.PerformanceMultiple, x.AmountLimit) { MainFields = x.MainFieldNames })])
+                .Select(x => new CompanyLicenseInfo(x.Name, x.CapacityAmount, x.PerformanceAmount) { MainFields = x.MainFieldNames })])
         {
             Locations = [.. locations.OrderByDescending(x => x.IsHeadOffice).ThenBy(x => x.Name, StringComparer.CurrentCulture)
                 .Select(x => new CompanyLocationInfo(x.Name, x.IsHeadOffice))],
@@ -120,7 +120,6 @@ public sealed class CompanyStore(IDbContextFactory<BidNoteDbContext> factory, Ti
         if (row is null) return false;
         row.CapacityAmount = input.CapacityAmount is > 0 ? input.CapacityAmount : null;
         row.PerformanceAmount = input.PerformanceAmount is > 0 ? input.PerformanceAmount : null;
-        row.PerformanceMultiple = input.PerformanceMultiple is > 0 ? input.PerformanceMultiple : null;
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         return true;
     }
@@ -144,7 +143,9 @@ public sealed class CompanyStore(IDbContextFactory<BidNoteDbContext> factory, Ti
         if (mine.Count == 0) return new EligibilitySummary(0, 0, 0);
 
         int open = await Open(db, now).CountAsync(cancellationToken).ConfigureAwait(false);
-        int eligible = 0, notEligible = 0, overLimit = 0, outside = 0, regionUnknown = 0, mainFieldMismatch = 0;
+        var limited = (await Open(db, now).Where(n => n.PerformanceLimited).Select(n => n.Id).ToListAsync(cancellationToken).ConfigureAwait(false))
+            .ToHashSet();
+        int eligible = 0, notEligible = 0, outside = 0, regionUnknown = 0, mainFieldMismatch = 0, performanceLimited = 0;
         foreach (var e in await CheckOpenAsync(db, now, mine, cancellationToken).ConfigureAwait(false))
         {
             var r = e.Result;
@@ -153,12 +154,12 @@ public sealed class CompanyStore(IDbContextFactory<BidNoteDbContext> factory, Ti
                 eligible++;
                 if (r.Region == RegionVerdict.Unknown) regionUnknown++;
                 if (r.MainField == MainFieldVerdict.Mismatch) mainFieldMismatch++;
+                if (limited.Contains(e.NoticeId)) performanceLimited++;
             }
             else if (r.Kind != EligibilityKind.Eligible) notEligible++;
-            else if (r.Amount == AmountVerdict.Over) overLimit++;
             else outside++;
         }
-        return new EligibilitySummary(eligible, notEligible, open - eligible - notEligible - overLimit - outside, overLimit, outside, regionUnknown, mainFieldMismatch);
+        return new EligibilitySummary(eligible, notEligible, open - eligible - notEligible - outside, outside, regionUnknown, mainFieldMismatch, performanceLimited);
     }
 
     public async Task<Eligibility?> CheckAsync(int noticeId, CancellationToken cancellationToken)
@@ -166,22 +167,20 @@ public sealed class CompanyStore(IDbContextFactory<BidNoteDbContext> factory, Ti
         await using var db = await factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var mine = await LicensesAsync(db, cancellationToken).ConfigureAwait(false);
         if (mine.Count == 0) return null;
-        long? estimated = await db.Notices.AsNoTracking().Where(n => n.Id == noticeId).Select(n => n.EstimatedPrice)
-            .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
         var rows = await db.NoticeLicenses.AsNoTracking().Where(l => l.NoticeId == noticeId)
             .Select(l => new { l.GroupNo, l.Name, l.Alternatives, l.MainFields })
             .ToListAsync(cancellationToken).ConfigureAwait(false);
         var regions = await db.NoticeRegionLimits.AsNoTracking().Where(r => r.NoticeId == noticeId).Select(r => r.Name)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
         var locations = await LocationsAsync(db, cancellationToken).ConfigureAwait(false);
-        return Judge([.. rows.Select(r => Row(r.GroupNo, r.Name, r.Alternatives, r.MainFields))], mine, estimated, regions, locations);
+        return Judge([.. rows.Select(r => Row(r.GroupNo, r.Name, r.Alternatives, r.MainFields))], mine, regions, locations);
     }
 
-    /// <summary>공고 하나를 면허·금액·지역(빼는 기준)과 주력분야(참고)로 판정한다. 판정 순서는 여기 한 곳.</summary>
-    private static Eligibility Judge(IReadOnlyList<LicenseRow> rows, Mine mine, long? estimated,
+    /// <summary>공고 하나를 면허·지역(빼는 기준)과 주력분야(참고)로 판정한다. 판정 순서는 여기 한 곳.</summary>
+    private static Eligibility Judge(IReadOnlyList<LicenseRow> rows, Mine mine,
         IReadOnlyCollection<string> regions, IReadOnlyCollection<string> locations)
     {
-        var e = LicenseEligibility.Check(rows, mine.Limits, estimated);
+        var e = LicenseEligibility.Check(rows, mine.Names);
         var mainField = e.Kind == EligibilityKind.Eligible
             ? MainFieldEligibility.Check(rows.Where(r => r.GroupNo == e.GroupNo), mine.MainFields)
             : MainFieldVerdict.NoLimit;
@@ -191,13 +190,13 @@ public sealed class CompanyStore(IDbContextFactory<BidNoteDbContext> factory, Ti
     private static LicenseRow Row(int groupNo, string name, string? alternatives, string? mainFields) =>
         new(groupNo, name, NoticeLicense.SplitAlternatives(alternatives), NoticeLicense.SplitMainFields(mainFields));
 
-    /// <summary>내 면허 이름별 금액 상한(모르면 null)과 주력분야.</summary>
-    private sealed record Mine(Dictionary<string, long?> Limits, Dictionary<string, IReadOnlyCollection<string>> MainFields)
+    /// <summary>내 면허 이름과 면허별 주력분야.</summary>
+    private sealed record Mine(HashSet<string> Names, Dictionary<string, IReadOnlyCollection<string>> MainFields)
     {
-        public int Count => Limits.Count;
+        public int Count => Names.Count;
     }
 
-    /// <summary>진행 중 공고 중 내 면허로 참여 가능하고 금액 상한도 넘지 않는 공고 번호. 목록 필터에서도 쓴다.</summary>
+    /// <summary>진행 중 공고 중 내 면허·지역으로 참여 가능한 공고 번호. 목록 필터에서도 쓴다.</summary>
     internal static async Task<IReadOnlyList<int>> EligibleOpenNoticeIdsAsync(BidNoteDbContext db, DateTime now, CancellationToken cancellationToken)
     {
         var mine = await LicensesAsync(db, cancellationToken).ConfigureAwait(false);
@@ -205,12 +204,12 @@ public sealed class CompanyStore(IDbContextFactory<BidNoteDbContext> factory, Ti
         return [.. (await CheckOpenAsync(db, now, mine, cancellationToken).ConfigureAwait(false)).Where(x => x.Result.CanBid).Select(x => x.NoticeId)];
     }
 
-    private sealed record OpenRow(int NoticeId, long? EstimatedPrice, LicenseRow Row);
+    private sealed record OpenRow(int NoticeId, LicenseRow Row);
 
     private static IQueryable<Notice> Open(BidNoteDbContext db, DateTime now) =>
         db.Notices.AsNoTracking().Where(x => x.IsActive && x.DueAt > now);
 
-    /// <summary>면허 제한이 있는 진행 공고마다 면허·금액·지역을 판정한다 (면허 제한이 없는 공고는 빠진다).</summary>
+    /// <summary>면허 제한이 있는 진행 공고마다 면허·지역을 판정한다 (면허 제한이 없는 공고는 빠진다).</summary>
     private static async Task<List<(int NoticeId, Eligibility Result)>> CheckOpenAsync(BidNoteDbContext db, DateTime now,
         Mine mine, CancellationToken cancellationToken)
     {
@@ -220,7 +219,7 @@ public sealed class CompanyStore(IDbContextFactory<BidNoteDbContext> factory, Ti
             .GroupBy(r => r.NoticeId).ToDictionary(g => g.Key, g => (IReadOnlyCollection<string>)[.. g.Select(r => r.Name)]);
         var locations = await LocationsAsync(db, cancellationToken).ConfigureAwait(false);
         return [.. rows.GroupBy(r => r.NoticeId)
-            .Select(g => (g.Key, Judge([.. g.Select(r => r.Row)], mine, g.First().EstimatedPrice, regions.GetValueOrDefault(g.Key, []), locations)))];
+            .Select(g => (g.Key, Judge([.. g.Select(r => r.Row)], mine, regions.GetValueOrDefault(g.Key, []), locations)))];
     }
 
     private static async Task<List<string>> LocationsAsync(BidNoteDbContext db, CancellationToken cancellationToken) =>
@@ -229,16 +228,16 @@ public sealed class CompanyStore(IDbContextFactory<BidNoteDbContext> factory, Ti
     private static async Task<List<OpenRow>> OpenLicenseRowsAsync(BidNoteDbContext db, DateTime now, CancellationToken cancellationToken)
     {
         var rows = await db.NoticeLicenses.AsNoTracking().Where(l => l.Notice!.IsActive && l.Notice.DueAt > now)
-            .Select(l => new { l.NoticeId, l.Notice!.EstimatedPrice, l.GroupNo, l.Name, l.Alternatives, l.MainFields })
+            .Select(l => new { l.NoticeId, l.GroupNo, l.Name, l.Alternatives, l.MainFields })
             .ToListAsync(cancellationToken).ConfigureAwait(false);
-        return [.. rows.Select(r => new OpenRow(r.NoticeId, r.EstimatedPrice, Row(r.GroupNo, r.Name, r.Alternatives, r.MainFields)))];
+        return [.. rows.Select(r => new OpenRow(r.NoticeId, Row(r.GroupNo, r.Name, r.Alternatives, r.MainFields)))];
     }
 
     private static async Task<Mine> LicensesAsync(BidNoteDbContext db, CancellationToken cancellationToken)
     {
         var rows = await db.CompanyLicenses.AsNoTracking().ToListAsync(cancellationToken).ConfigureAwait(false);
         return new Mine(
-            rows.ToDictionary(x => x.Name, x => x.AmountLimit, StringComparer.Ordinal),
+            rows.Select(x => x.Name).ToHashSet(StringComparer.Ordinal),
             rows.ToDictionary(x => x.Name, x => (IReadOnlyCollection<string>)x.MainFieldNames.ToHashSet(StringComparer.Ordinal), StringComparer.Ordinal));
     }
 

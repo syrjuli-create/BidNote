@@ -125,6 +125,9 @@ public sealed class G2BCollector(G2BApiClient client, ILogger<G2BCollector> logg
             DetailUrl = Str(item, "bidNtceDtlUrl"),
             BasePrice = null, // 기초금액은 별도 API(BsisAmount)로 받는다
             EstimatedPrice = Long(item, "presmptPrce") is > 0 and var estimated ? estimated : null,
+            PerformanceLimited = Str(item, "arsltCmptYn") == "Y",
+            PerformanceDocDueAt = Date(item, "arsltApplDocRcptDt"),
+            PerformanceDocMethod = Str(item, "arsltApplDocRcptMthdNm"),
             LowerLimitRate = double.TryParse(Str(item, "sucsfbidLwltRate"), NumberStyles.Float, CultureInfo.InvariantCulture, out double r) ? r : 0,
             PostedAt = posted,
             DueAt = due,

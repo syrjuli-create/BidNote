@@ -26,6 +26,9 @@ public sealed record CollectedNotice
 
     /// <summary>추정가격(원). 입찰참가자격·적격심사 금액 기준. 공고 목록 원문의 presmptPrce.</summary>
     public long? EstimatedPrice { get; init; }
+    public bool PerformanceLimited { get; init; }
+    public DateTime? PerformanceDocDueAt { get; init; }
+    public string PerformanceDocMethod { get; init; } = "";
     public double LowerLimitRate { get; init; }
     public long? AValue { get; init; }
     public long? NetCost { get; init; }

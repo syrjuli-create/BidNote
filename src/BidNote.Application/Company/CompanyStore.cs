@@ -2,8 +2,9 @@ using BidNote.Domain.Company;
 
 namespace BidNote.Application.Company;
 
-/// <param name="AmountLimit">시공능력평가액과 "실적 ÷ 배수" 중 작은 값. 넣은 값이 없으면 null.</param>
-public sealed record CompanyLicenseInfo(string Name, long? CapacityAmount, long? PerformanceAmount, double? PerformanceMultiple, long? AmountLimit)
+/// <param name="CapacityAmount">시공능력평가액(원, 참고용).</param>
+/// <param name="PerformanceAmount">최근 5년 실적 합계(원). 적격심사 시공경험 점수 예상에 쓴다.</param>
+public sealed record CompanyLicenseInfo(string Name, long? CapacityAmount, long? PerformanceAmount)
 {
     /// <summary>이 업종의 주력분야. 비어 있으면 주력분야는 판단하지 않는다.</summary>
     public IReadOnlyList<string> MainFields { get; init; } = [];
@@ -27,20 +28,20 @@ public sealed record LocationOption(string Name, int OpenNoticeCount);
 
 public sealed record CompanyProfileInput(string Name, string BizNo, string Region, string Email);
 
-/// <summary>면허 하나의 금액 정보 (원, 배수). 비운 값은 null.</summary>
-public sealed record LicenseAmountsInput(long? CapacityAmount, long? PerformanceAmount, double? PerformanceMultiple);
+/// <summary>면허 하나의 금액 정보 (원). 비운 값은 null.</summary>
+public sealed record LicenseAmountsInput(long? CapacityAmount, long? PerformanceAmount);
 
 /// <summary>면허 고르기 목록 한 줄. 진행 중 공고의 면허 제한(대체 인정 업종 포함)에 나온 횟수.</summary>
 public sealed record LicenseOption(string Name, int OpenNoticeCount);
 
 /// <summary>
-/// 진행 중 공고를 내 면허·금액으로 나눈 수. Eligible은 면허가 맞고 금액 상한도 넘지 않는 공고(상한을 모르면 면허만 봄),
-/// OverLimit은 면허는 맞지만 추정가격이 상한을 넘는 공고, OutsideRegion은 면허·금액은 맞지만 참가 가능 지역 밖인 공고,
-/// Unknown은 면허 제한 정보가 없는 공고. RegionUnknown은 참여 가능(Eligible) 중 지역을 판단하지 못한 공고 수(소재지 확인 필요).
+/// 진행 중 공고를 내 면허·지역으로 나눈 수. Eligible은 면허가 맞고 지역 밖이 아닌 공고, OutsideRegion은 면허는 맞지만
+/// 참가 가능 지역 밖인 공고, Unknown은 면허 제한 정보가 없는 공고. RegionUnknown은 참여 가능 중 지역을 판단하지 못한
+/// 공고 수(소재지 확인 필요), MainFieldMismatch는 참여 가능 중 주력분야가 다른 공고 수(참고용, 빼지 않음),
+/// PerformanceLimited는 참여 가능 중 실적제한 공고 수(공고문의 실적 조건 확인 필요, 빼지 않음).
 /// </summary>
-/// MainFieldMismatch는 참여 가능 중 주력분야가 내 주력분야와 다른 공고 수(참고용, 빼지 않음).
-public sealed record EligibilitySummary(int Eligible, int NotEligible, int Unknown, int OverLimit = 0, int OutsideRegion = 0, int RegionUnknown = 0,
-    int MainFieldMismatch = 0);
+public sealed record EligibilitySummary(int Eligible, int NotEligible, int Unknown, int OutsideRegion = 0, int RegionUnknown = 0,
+    int MainFieldMismatch = 0, int PerformanceLimited = 0);
 
 public interface ICompanyStore
 {
@@ -54,7 +55,7 @@ public interface ICompanyStore
 
     Task RemoveLicenseAsync(string name, CancellationToken cancellationToken);
 
-    /// <summary>면허 하나의 시공능력평가액·실적·실적 배수를 저장한다. 0 이하는 비운 것으로 본다. 없는 면허면 false.</summary>
+    /// <summary>면허 하나의 시공능력평가액·최근 5년 실적을 저장한다. 0 이하는 비운 것으로 본다. 없는 면허면 false.</summary>
     Task<bool> SaveLicenseAmountsAsync(string name, LicenseAmountsInput input, CancellationToken cancellationToken);
 
     /// <summary>면허 하나의 주력분야를 저장한다 (앞뒤 공백·빈 값·중복은 뺀다). 없는 면허면 false.</summary>

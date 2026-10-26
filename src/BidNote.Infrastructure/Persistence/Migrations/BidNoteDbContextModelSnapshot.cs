@@ -190,9 +190,6 @@ namespace BidNote.Infrastructure.Persistence.Migrations
                     b.Property<long?>("PerformanceAmount")
                         .HasColumnType("INTEGER");
 
-                    b.Property<double?>("PerformanceMultiple")
-                        .HasColumnType("REAL");
-
                     b.HasKey("Id");
 
                     b.HasIndex("Name")
@@ -380,6 +377,16 @@ namespace BidNote.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("OpenAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("PerformanceDocDueAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PerformanceDocMethod")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("PerformanceLimited")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("PostedAt")
                         .HasColumnType("TEXT");
