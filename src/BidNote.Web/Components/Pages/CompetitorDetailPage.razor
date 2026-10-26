@@ -28,14 +28,25 @@
         @if (detail.Histogram.Count > 0)
         {
             int max = detail.Histogram.Max(b => b.Count);
+            double from = detail.Histogram[0].From, to = detail.Histogram[^1].To;
+            var mine = detail.Bids.Where(b => b.MyRate is not null).ToList();
             <section class="panel">
-                <h2 class="sub">사정률 분포 <span class="tsub" style="display:inline">0.1%p 간격, 써낸 횟수</span></h2>
-                <div class="histo" role="img" aria-label="@($"{s.Name} 사정률 분포, 가운데 값 {Rate(s.MedianRate)}")">
-                    @foreach (var b in detail.Histogram)
+                <h2 class="sub">사정률 분포 <span class="tsub" style="display:inline">0.1%p 간격, 써낸 횟수@(mine.Count > 0 ? " · 점선 = 같은 공고에 쓴 내 사정률" : "")</span></h2>
+                <div class="histowrap">
+                    <div class="histo" role="img" aria-label="@($"{s.Name} 사정률 분포, 가운데 값 {Rate(s.MedianRate)}")">
+                        @foreach (var b in detail.Histogram)
+                        {
+                            <div class="hcol" data-tip="@($"{Rate(b.From)} ~ {Rate(b.To)}: {b.Count}번")" tabindex="0">
+                                <span class="hbar" style="height:@(b.Count == 0 ? "0" : Math.Max(2, b.Count * 100.0 / max).ToString("0.#", CultureInfo.InvariantCulture))%"></span>
+                            </div>
+                        }
+                    </div>
+                    @foreach (var b in mine)
                     {
-                        <div class="hcol" data-tip="@($"{Rate(b.From)} ~ {Rate(b.To)}: {b.Count}번")" tabindex="0">
-                            <span class="hbar" style="height:@(b.Count == 0 ? "0" : Math.Max(2, b.Count * 100.0 / max).ToString("0.#", CultureInfo.InvariantCulture))%"></span>
-                        </div>
+                        double r = b.MyRate!.Value;
+                        bool outside = r < from || r >= to;
+                        <span class="myline @(outside ? "edge" : "")" style="left:@Pos(r, from, to)%" tabindex="0"
+                              data-tip="@($"내 사정률 {Rate(r)}{(outside ? " (그래프 밖)" : "")} · {b.NoticeName}")"></span>
                     }
                 </div>
                 <div class="haxis num">
@@ -85,6 +96,10 @@
         detail = await Queries.GetAsync(BizNo, CancellationToken.None);
 
     private static string Rate(double? r) => r is { } v ? v.ToString("0.000", CultureInfo.InvariantCulture) + "%" : "-";
+
+    /// <summary>분포 그래프 안의 가로 위치(%). 그래프 밖 값은 양끝에 붙인다.</summary>
+    private static string Pos(double v, double from, double to) =>
+        Math.Clamp((v - from) / (to - from) * 100, 0, 100).ToString("0.##", CultureInfo.InvariantCulture);
 
     private static string BizText(string bizNo) => bizNo.Length == 10 ? $"{bizNo[..3]}-{bizNo[3..5]}-{bizNo[5..]}" : bizNo;
 }
