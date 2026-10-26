@@ -68,7 +68,7 @@ dotnet run --project src/BidNote.Web --launch-profile http   # http://localhost:
   - **같은 `lmtGrpNo` 안은 "그리고", 그룹끼리는 "또는"** (2026-10-25 실데이터 확인: 그룹1 토목건축 / 그룹2 건축, 한 그룹에 일반소방(전기)+(기계)). 판정은 `LicenseEligibility` 한 곳.
   - `indstrytyMfrcFldList` = 주력분야 "[1^포장공사]", "[1^토공사^포장공사]", "[1^도장공사],[2^습식·방수공사]" (줄의 약 27%). `NoticeLicense.MainFields`에 묶음 '|', 분야 '^'로 저장. 공고 `indstrytyMfrcFldEvlYn`이 대부분 N이라 판정에는 넣지 않고 참고로만 (`MainFieldEligibility`).
   - `permsnIndstrytyList` = 그 줄 대신 인정하는 업종 "[토목건축공사업/0003]" (전체 줄의 약 24%). `NoticeLicense.Alternatives`에 '|'로 저장. `indstrytyMfrcFldList`(주력분야)는 아직 판정에 쓰지 않는다.
-- `getBidPblancListInfoPrtcptPsblRgn` 참가 가능 지역 — 공사·용역·물품이 섞여 온다(`bsnsDivNm`, 하루 약 600줄). 지역마다 한 줄(`lmtSno`), 시군구 단위가 약 72%. 그중 한 곳에 본사·지사가 있으면 된다 (공고 `rgnLmtBidLocplcJdgmBssNm` "본사또는참여지사소재지"). 판정은 `RegionEligibility`, 시도는 `RegionNames.ToShort`로 맞춘다(강원도=강원특별자치도). 지역 이름은 "전남광주통합특별시"처럼 새 이름으로 온다.
+- `getBidPblancListInfoPrtcptPsblRgn` 참가 가능 지역 — 공사·용역·물품이 섞여 온다(`bsnsDivNm`, 하루 약 600줄). 지역마다 한 줄(`lmtSno`), 시군구 단위가 약 72%. 그중 한 곳에 본사·지사가 있으면 된다 (공고 `rgnLmtBidLocplcJdgmBssNm` "본사또는참여지사소재지"). 판정은 `RegionEligibility`, 시도는 `RegionNames.ToShort`로 맞춘다(강원도=강원특별자치도). 지역 이름은 "전남광주통합특별시"처럼 새 이름으로 온다. **긴 기간을 한 번에 조회하면 resultCode 07 "입력범위값 초과"** (60일에서 확인) → `G2BRegionLimitSource.MaxWindow`(7일)씩 나눠 받는다.
 - 업체별 순위(`OpengCompt`)는 호출이 많고(참가 3천 곳이면 4번) 줄도 많아(공고당 수천 줄) 필요한 공고만 받는다: 상세를 열 때, 내 투찰·관심 공고(수집마다 10건), 경쟁사 성향용으로 내 면허 공고(수집마다 1건, `CollectorHostedService.CompetitorRanksPerRun`). 늘리면 하루 한도와 DB 크기를 같이 볼 것.
 - **같은 공고번호로 원문이 여러 종류 쌓인다** (공고 목록·기초금액·개찰 결과·참가 가능 지역). 공고 원문을 읽을 때는 `ApiName`으로 고른다 — "가장 최근 원문"을 쓰면 다른 원문을 읽는다 (2026-10-25 상세 화면 오류의 원인).
 - `getBidPblancListInfoCnstwkBsisAmount` 기초금액 `bssamt`, 순공사원가 `bssAmtPurcnstcst`, A값 적용 여부 `bidPrceCalclAYn`
