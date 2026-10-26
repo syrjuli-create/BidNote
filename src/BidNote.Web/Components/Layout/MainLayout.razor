@@ -2,14 +2,16 @@
 @using BidNote.Infrastructure.G2B
 @using Microsoft.Extensions.Options
 @inject IOptions<G2BOptions> G2B
+@inject NavigationManager Nav
+@implements IDisposable
 
 <header class="topbar">
     <div class="in">
         <a class="logo" href="/"><span class="mark">입</span>입찰노트</a>
         <nav class="mainnav" aria-label="대메뉴">
-            @foreach (var (href, name) in Menus)
+            @foreach (var (href, name, prefixes) in Menus)
             {
-                <NavLink href="@href" Match="NavLinkMatch.Prefix">@name</NavLink>
+                <a href="@href" class="@(IsActive(prefixes) ? "active" : null)" aria-current="@(IsActive(prefixes) ? "page" : null)">@name</a>
             }
         </nav>
         <div class="userbox">
@@ -34,14 +36,27 @@
 </div>
 
 @code {
-    private static readonly (string Href, string Name)[] Menus =
+    // 공고 찾기는 메인("/", 진행 공고)과 /notices 아래(공고 상세·개찰 결과)를 함께 켠다. "="로 시작하면 그 주소만.
+    private static readonly (string Href, string Name, string[] Prefixes)[] Menus =
     [
-        ("/notices", "공고 찾기"),
-        ("/mine", "내 입찰"),
-        ("/tools", "입찰 도구"),
-        ("/alerts", "알림"),
-        ("/library", "자료실"),
-        ("/help", "고객센터"),
-        ("/me", "내 정보"),
+        ("/", "공고 찾기", ["=/", "/notices"]),
+        ("/mine", "내 입찰", ["/mine"]),
+        ("/tools", "입찰 도구", ["/tools"]),
+        ("/alerts", "알림", ["/alerts"]),
+        ("/library", "자료실", ["/library"]),
+        ("/help", "고객센터", ["/help"]),
+        ("/me", "내 정보", ["/me"]),
     ];
+
+    protected override void OnInitialized() => Nav.LocationChanged += OnLocationChanged;
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+
+    private bool IsActive(string[] prefixes)
+    {
+        string path = new Uri(Nav.Uri).AbsolutePath;
+        return prefixes.Any(p => p.StartsWith('=') ? path == p[1..] : path == p || path.StartsWith(p + "/", StringComparison.Ordinal));
+    }
 }

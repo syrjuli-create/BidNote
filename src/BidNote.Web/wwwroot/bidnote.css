@@ -332,3 +332,10 @@ tr.past td { color: #6b7280; }
 /* 내 정보: 목록에 없는 면허 이름 안내 */
 .suggest { margin-top: 10px; padding: 10px 12px; border: 1px solid #f3d38a; background: #fffbeb; border-radius: 8px; }
 .suggest p { margin: 0 0 8px; }
+
+/* 공고 찾기 › 개찰 결과 */
+.openings .ofilter { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; }
+.openings .ofilter .f { min-width: 0; }
+.openings .ofilter .f.grow { flex: 1 1 260px; }
+.openings .ofilter input.in { width: 100%; }
+.results > .minetabs { margin-bottom: 10px; }

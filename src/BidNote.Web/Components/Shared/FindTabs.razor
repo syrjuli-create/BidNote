@@ -1,0 +1,9 @@
+@* '공고 찾기' 메뉴 안의 화면 바꾸기 *@
+<nav class="minetabs" aria-label="공고 찾기">
+    <a href="/" class="@(Current == "open" ? "on" : "")" aria-current="@(Current == "open" ? "page" : null)">진행 공고</a>
+    <a href="/notices/results" class="@(Current == "results" ? "on" : "")" aria-current="@(Current == "results" ? "page" : null)">개찰 결과</a>
+</nav>
+
+@code {
+    [Parameter, EditorRequired] public string Current { get; set; } = "";
+}

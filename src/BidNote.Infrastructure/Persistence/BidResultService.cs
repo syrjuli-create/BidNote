@@ -167,9 +167,7 @@ public sealed class BidResultService(
     /// </summary>
     private async Task<List<int>> CompetitorCandidatesAsync(BidNoteDbContext db, IReadOnlyCollection<int> exclude, int max, CancellationToken cancellationToken)
     {
-        var mine = (await db.CompanyLicenses.AsNoTracking().Select(x => x.Name).ToListAsync(cancellationToken).ConfigureAwait(false))
-            .ToHashSet(StringComparer.Ordinal);
-        if (mine.Count == 0) return [];
+        if (!await db.CompanyLicenses.AnyAsync(cancellationToken).ConfigureAwait(false)) return [];
         DateTime since = timeProvider.GetLocalNow().DateTime - CompetitorWindow;
         var recent = await db.BidResults.AsNoTracking()
             .Where(r => r.RanksFetchedAt == null && r.ParticipantCount > 0 && r.Status.Contains("개찰완료") && r.OpenedAt >= since && !exclude.Contains(r.NoticeId))
@@ -177,14 +175,81 @@ public sealed class BidResultService(
             .Select(r => r.NoticeId)
             .Take(1000)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
-        var rows = await db.NoticeLicenses.AsNoTracking().Where(l => recent.Contains(l.NoticeId))
+        var eligible = await LicenseEligibleAsync(db, recent, cancellationToken).ConfigureAwait(false);
+        return [.. recent.Where(eligible.Contains).Take(max)];
+    }
+
+    public async Task<OpeningList> ListAsync(OpeningFilter filter, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+        await using var db = await factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        DateTime since = timeProvider.GetLocalNow().DateTime.AddDays(-Math.Clamp(filter.Days, 1, OpeningFilter.MaxDays));
+        var q = db.BidResults.AsNoTracking().Where(r => r.OpenedAt >= since);
+        if (!string.IsNullOrWhiteSpace(filter.Keyword))
+        {
+            string k = filter.Keyword.Trim();
+            q = q.Where(r => r.Notice!.Name.Contains(k) || r.Notice.Agency.Contains(k) || r.Notice.BidNo.Contains(k) || r.WinnerName.Contains(k));
+        }
+        if (filter.MineOnly)
+        {
+            q = q.Where(r => db.MyBids.Any(b => b.NoticeId == r.NoticeId)
+                || db.FavoriteNotices.Any(f => f.NoticeId == r.NoticeId && f.TrashedAt == null));
+        }
+        if (filter.LicenseOnly)
+        {
+            var candidates = await q.Select(r => r.NoticeId).ToListAsync(cancellationToken).ConfigureAwait(false);
+            var eligible = await LicenseEligibleAsync(db, candidates, cancellationToken).ConfigureAwait(false);
+            q = q.Where(r => eligible.Contains(r.NoticeId));
+        }
+
+        int size = Math.Clamp(filter.PageSize, 1, 200);
+        int total = await q.CountAsync(cancellationToken).ConfigureAwait(false);
+        int page = Math.Clamp(filter.Page, 1, Math.Max(1, (total + size - 1) / size));
+        var rows = await q.OrderByDescending(r => r.OpenedAt).ThenByDescending(r => r.Id).Skip((page - 1) * size).Take(size)
+            .Select(r => new
+            {
+                r.NoticeId,
+                r.Notice!.BidNo,
+                r.Notice.Name,
+                r.Notice.Agency,
+                r.Notice.Region,
+                r.OpenedAt,
+                r.Status,
+                r.ParticipantCount,
+                NoticeBasePrice = r.Notice.BasePrice,
+                r.ResultBasePrice,
+                r.PlannedPrice,
+                r.Notice.LowerLimitRate,
+                r.Notice.AValue,
+                r.WinnerName,
+                r.WinnerAmount,
+                HasMyBid = db.MyBids.Any(b => b.NoticeId == r.NoticeId),
+                IsFavorite = db.FavoriteNotices.Any(f => f.NoticeId == r.NoticeId && f.TrashedAt == null),
+            })
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        var items = rows.Select(x =>
+        {
+            var basis = new Basis(x.ResultBasePrice ?? x.NoticeBasePrice, x.LowerLimitRate, x.AValue ?? 0, x.PlannedPrice);
+            return new OpeningListItem(x.NoticeId, x.BidNo, x.Name, x.Agency, x.Region, x.OpenedAt, x.Status, x.ParticipantCount,
+                basis.BasePrice, x.PlannedPrice, BidResultMath.ActualAssessmentRate(x.PlannedPrice, basis.BasePrice),
+                x.WinnerName, x.WinnerAmount, basis.RateOf(x.WinnerAmount), x.HasMyBid, x.IsFavorite);
+        }).ToList();
+        return new OpeningList(items, total, page, size);
+    }
+
+    /// <summary>주어진 공고 중 내 면허로 참여할 수 있었던 것 (면허만 본다). 면허를 등록하지 않았으면 비어 있다.</summary>
+    private static async Task<HashSet<int>> LicenseEligibleAsync(BidNoteDbContext db, IReadOnlyCollection<int> noticeIds, CancellationToken cancellationToken)
+    {
+        var mine = (await db.CompanyLicenses.AsNoTracking().Select(x => x.Name).ToListAsync(cancellationToken).ConfigureAwait(false))
+            .ToHashSet(StringComparer.Ordinal);
+        if (mine.Count == 0 || noticeIds.Count == 0) return [];
+        var rows = await db.NoticeLicenses.AsNoTracking().Where(l => noticeIds.Contains(l.NoticeId))
             .Select(l => new { l.NoticeId, l.GroupNo, l.Name, l.Alternatives })
             .ToListAsync(cancellationToken).ConfigureAwait(false);
-        var eligible = rows.GroupBy(r => r.NoticeId)
+        return [.. rows.GroupBy(r => r.NoticeId)
             .Where(g => LicenseEligibility.Check(g.Select(r => new LicenseRow(r.GroupNo, r.Name, NoticeLicense.SplitAlternatives(r.Alternatives))), mine).Kind == EligibilityKind.Eligible)
-            .Select(g => g.Key)
-            .ToHashSet();
-        return [.. recent.Where(eligible.Contains).Take(max)];
+            .Select(g => g.Key)];
     }
 
     public async Task<BidResultView?> GetAsync(int noticeId, int top, CancellationToken cancellationToken)

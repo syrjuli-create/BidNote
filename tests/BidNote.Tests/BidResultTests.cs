@@ -319,6 +319,44 @@ public sealed class BidResultServiceTests : IDisposable
         Assert.Equal(new MyRank(MyRankKind.Ranked, 3), (await service.MyBidOutcomesAsync(CancellationToken.None))[id].Rank);
     }
 
+    [Fact]
+    public async Task 개찰_결과_목록은_최근_개찰순으로_기간_검색어_내_공고_면허로_거른다()
+    {
+        int a = AddNotice("A");
+        int b = AddNotice("B");
+        int old = AddNotice("OLD");
+        source.Openings.Add(Opening("A") with { OpenedAt = Now.AddHours(-3) });
+        source.Openings.Add(Opening("B") with { OpenedAt = Now.AddHours(-1), WinnerName = "포장왕건설" });
+        source.Openings.Add(Opening("OLD") with { OpenedAt = Now.AddDays(-10) });
+        await service.CollectOpeningsAsync(Now.AddDays(-30), Now, CancellationToken.None);
+        using (var db = testDb.NewContext())
+        {
+            db.MyBids.Add(new MyBid { NoticeId = a, AssessmentRate = 100, BidAmount = 88_000_000, CreatedAt = Now, UpdatedAt = Now });
+            db.NoticeLicenses.Add(new NoticeLicense { NoticeId = b, GroupNo = 1, Name = "지반조성ㆍ포장공사업" });
+            db.NoticeLicenses.Add(new NoticeLicense { NoticeId = a, GroupNo = 1, Name = "전기공사업" });
+            db.CompanyLicenses.Add(new BidNote.Domain.Company.CompanyLicense { Name = "지반조성ㆍ포장공사업" });
+            db.SaveChanges();
+        }
+
+        var recent = await service.ListAsync(new OpeningFilter(), CancellationToken.None);
+        var month = await service.ListAsync(new OpeningFilter { Days = 30 }, CancellationToken.None);
+        var byWinner = await service.ListAsync(new OpeningFilter { Keyword = "포장왕" }, CancellationToken.None);
+        var mine = await service.ListAsync(new OpeningFilter { MineOnly = true }, CancellationToken.None);
+        var licensed = await service.ListAsync(new OpeningFilter { LicenseOnly = true }, CancellationToken.None);
+        var paged = await service.ListAsync(new OpeningFilter { Days = 30, PageSize = 2, Page = 9 }, CancellationToken.None);
+
+        Assert.Equal(["B", "A"], recent.Items.Select(x => x.BidNo));
+        Assert.Equal(["B", "A", "OLD"], month.Items.Select(x => x.BidNo));
+        Assert.Equal(["B"], byWinner.Items.Select(x => x.BidNo));
+        var onlyMine = Assert.Single(mine.Items);
+        Assert.Equal((a, true), (onlyMine.NoticeId, onlyMine.HasMyBid));
+        Assert.Equal([b], licensed.Items.Select(x => x.NoticeId));
+        Assert.Equal((2, 3), (paged.Page, paged.TotalCount));
+        Assert.Equal(["OLD"], paged.Items.Select(x => x.BidNo));
+        Assert.NotNull(recent.Items[0].WinnerAssessmentRate);
+        Assert.DoesNotContain(old, recent.Items.Select(x => x.NoticeId));
+    }
+
     [Theory]
     [InlineData("123-45-67890", "1234567890")]
     [InlineData(" 1234567890 ", "1234567890")]

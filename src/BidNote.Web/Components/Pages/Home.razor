@@ -110,6 +110,7 @@
                 </nav>
             }
 
+            <FindTabs Current="open" />
             <div class="listhead">
                 <h2>공고 @(result?.TotalCount.ToString("N0") ?? "0")건
                     @if (result is { TotalCount: > 0 } shown)

@@ -1,0 +1,123 @@
+@page "/notices/results"
+@using System.Globalization
+@using BidNote.Application.Results
+@inject IBidResultService Results
+@inject NavigationManager Nav
+
+<PageTitle>개찰 결과 · 입찰노트</PageTitle>
+
+<div class="stack openings">
+    <FindTabs Current="results" />
+
+    <form method="get" action="/notices/results" class="panel ofilter">
+        <label class="f grow">검색어
+            <input class="in" name="q" value="@Q" placeholder="공고명, 발주기관, 공고번호, 1순위 업체" />
+        </label>
+        <label class="f">개찰일
+            <select name="days">
+                @foreach (var (v, t) in DayOptions)
+                {
+                    <option value="@v" selected="@(Days == v)">@t</option>
+                }
+            </select>
+        </label>
+        <label class="check"><input type="checkbox" name="lic" value="true" checked="@(Lic == true)" /> 내 면허로 참여할 수 있었던 공고만</label>
+        <label class="check"><input type="checkbox" name="mine" value="true" checked="@(Mine == true)" /> 내 투찰·관심 공고만</label>
+        <div class="row">
+            <button class="btn" type="submit">적용</button>
+            <a class="btn line" href="/notices/results">초기화</a>
+        </div>
+    </form>
+
+    <div class="listhead">
+        <h2>개찰 결과 @(list?.TotalCount.ToString("N0", CultureInfo.InvariantCulture) ?? "0")건
+            @if (list is { TotalCount: > 0 } shown)
+            {
+                <span class="tsub" style="display:inline">@((shown.Page - 1) * shown.PageSize + 1)–@Math.Min(shown.Page * shown.PageSize, shown.TotalCount)번째 · 최근 개찰순</span>
+            }
+        </h2>
+    </div>
+
+    @if (list is null || list.Items.Count == 0)
+    {
+        <div class="empty">
+            조건에 맞는 개찰 결과가 없습니다.
+            @if (Lic == true) { <span>면허로 거르려면 <a href="/me">내 정보</a>에 보유 면허를 등록해야 합니다.</span> }
+            개찰 결과는 10분마다 수집할 때 함께 받습니다.
+        </div>
+    }
+    else
+    {
+        <div class="tbl">
+            <table>
+                <thead>
+                    <tr><th>개찰</th><th>공고명 · 발주기관</th><th>지역</th><th class="r">참가</th><th class="r">기초금액</th><th class="r">실제 사정률</th><th>1순위</th><th class="r">1순위 사정률</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var o in list.Items)
+                    {
+                        <tr>
+                            <td class="num nw">@(o.OpenedAt is { } at ? Display.ShortDateTime(at) : "-")<span class="tsub">@o.Status</span></td>
+                            <td class="namecol">
+                                <a class="tname" href="/notices/@o.NoticeId#result">@o.Name</a>
+                                @if (o.HasMyBid) { <span class="chip new">내 투찰</span> }
+                                @if (o.IsFavorite) { <span class="chip">★ 관심</span> }
+                                <span class="tsub">@o.Agency · <span class="num">@o.BidNo</span></span>
+                            </td>
+                            <td class="nw">@o.Region</td>
+                            <td class="r num">@o.ParticipantCount.ToString("N0", CultureInfo.InvariantCulture)</td>
+                            <td class="r num">@Display.Eok(o.BasePrice)</td>
+                            <td class="r num">@(o.ActualRate is { } a ? Rate(a) : "-")@if (o.PlannedPrice is null) {<span class="tsub">상세를 열면 받음</span>}</td>
+                            <td>@(o.WinnerName.Length > 0 ? o.WinnerName : "-")<span class="tsub num">@(o.WinnerAmount is { } w ? Display.Won(w) + "원" : "")</span></td>
+                            <td class="r num"><b>@(o.WinnerAssessmentRate is { } r ? Rate(r) : "-")</b></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (list.PageCount > 1)
+        {
+            <nav class="pager" aria-label="페이지">
+                @if (list.Page > 1) { <a href="@PageUrl(list.Page - 1)" aria-label="이전 페이지">‹ 이전</a> }
+                @foreach (int p in Home.PageNumbers(list.Page, list.PageCount))
+                {
+                    if (p == 0) { <span class="gap">…</span> }
+                    else if (p == list.Page) { <span class="cur" aria-current="page">@p</span> }
+                    else { <a href="@PageUrl(p)">@p</a> }
+                }
+                @if (list.Page < list.PageCount) { <a href="@PageUrl(list.Page + 1)" aria-label="다음 페이지">다음 ›</a> }
+            </nav>
+        }
+        <p class="tsub">실제 사정률 = 예정가격 ÷ 기초금액. 예정가격은 업체별 순위와 함께 받으므로, 아직 받지 않은 공고는 상세 화면을 열면 받습니다. 1순위 사정률은 1순위 투찰금액을 거꾸로 계산한 값입니다.</p>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "q")] public string? Q { get; set; }
+    [SupplyParameterFromQuery(Name = "days")] public int? DaysParam { get; set; }
+    [SupplyParameterFromQuery(Name = "lic")] public bool? Lic { get; set; }
+    [SupplyParameterFromQuery(Name = "mine")] public bool? Mine { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] public int? PageNo { get; set; }
+
+    private static readonly (int Value, string Text)[] DayOptions = [(1, "오늘·어제"), (3, "최근 3일"), (7, "최근 7일"), (30, "최근 30일")];
+
+    private OpeningList? list;
+
+    private int Days => DaysParam is { } d && DayOptions.Any(o => o.Value == d) ? d : OpeningFilter.DefaultDays;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        list = await Results.ListAsync(new OpeningFilter
+        {
+            Keyword = Q,
+            Days = Days,
+            LicenseOnly = Lic == true,
+            MineOnly = Mine == true,
+            Page = PageNo ?? 1,
+        }, CancellationToken.None);
+    }
+
+    private string PageUrl(int page) => Nav.GetUriWithQueryParameter("page", page == 1 ? null : page);
+
+    private static string Rate(double r) => r.ToString("0.000", CultureInfo.InvariantCulture) + "%";
+}
