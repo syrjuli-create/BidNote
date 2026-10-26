@@ -36,7 +36,17 @@
                             {
                                 var d = Draft(l);
                                 <tr>
-                                    <td><span class="lic">@l.Name</span></td>
+                                    <td>
+                                        <span class="lic">@l.Name</span>
+                                        @if (options.Count > 0 && !options.Any(o => o.Name == l.Name))
+                                        {
+                                            <span class="chip warn" title="진행 중 공고의 면허 제한에 이 이름이 없어 어떤 공고와도 맞지 않습니다">공고에 없는 이름</span>
+                                            @if (Suggest(l.Name) is { Count: > 0 } better)
+                                            {
+                                                <span class="tsub">혹시 @string.Join(", ", better)?</span>
+                                            }
+                                        }
+                                    </td>
                                     <td class="r"><input class="in num" inputmode="decimal" aria-label="@(l.Name) 시공능력평가액(억 원)" placeholder="예: 35.2" @bind="d.Capacity" /></td>
                                     <td class="r"><input class="in num" inputmode="decimal" aria-label="@(l.Name) 최근 실적 합계(억 원)" placeholder="예: 120" @bind="d.Performance" /></td>
                                     <td class="r"><input class="in num" inputmode="decimal" aria-label="@(l.Name) 실적 배수" placeholder="예: 1" @bind="d.Multiple" /></td>
@@ -70,6 +80,24 @@
                     <option value="@o.Name">진행 공고 @(o.OpenNoticeCount)건</option>
                 }
             </datalist>
+            @if (unknownName.Length > 0)
+            {
+                <div class="suggest" role="alert">
+                    <p><b>'@unknownName'</b>은(는) 진행 중 공고의 면허 제한에 없는 이름입니다. 이름이 다르면 공고와 맞춰 볼 수 없습니다.</p>
+                    <div class="row">
+                        @if (suggestions.Count > 0)
+                        {
+                            <span class="tsub" style="display:inline">이 이름인가요?</span>
+                            @foreach (var suggested in suggestions)
+                            {
+                                <button type="button" class="btn" disabled="@busy" @onclick="() => AddNameAsync(suggested)">@suggested</button>
+                            }
+                        }
+                        <button type="button" class="btn line" disabled="@busy" @onclick="() => AddNameAsync(unknownName)">그래도 '@unknownName'(으)로 추가</button>
+                        <button type="button" class="btn line" @onclick="ClearSuggestion">취소</button>
+                    </div>
+                </div>
+            }
             @if (licenseStatus.Length > 0) { <p class="tsub" role="status">@licenseStatus</p> }
 
             @if (summary is { } s && info.HasLicenses)
@@ -146,6 +174,10 @@
     private EligibilitySummary? summary;
     private Form form = new();
     private string newLicense = "", licenseStatus = "", profileStatus = "";
+
+    // 목록에 없는 이름을 넣으면 바로 등록하지 않고 가까운 이름을 보여 준다.
+    private string unknownName = "";
+    private IReadOnlyList<string> suggestions = [];
     private bool busy;
 
     private sealed class Form
@@ -275,16 +307,37 @@
 
     private async Task AddAsync()
     {
-        busy = true;
         string name = newLicense.Trim();
-        bool known = options.Any(o => o.Name == name);
+        if (options.Count > 0 && !options.Any(o => o.Name == name))
+        {
+            unknownName = name;
+            suggestions = Suggest(name);
+            licenseStatus = "";
+            return;
+        }
+        await AddNameAsync(name);
+    }
+
+    private async Task AddNameAsync(string name)
+    {
+        busy = true;
         bool added = await Store.AddLicenseAsync(name, CancellationToken.None);
         licenseStatus = !added ? $"'{name}'은(는) 이미 등록돼 있습니다."
-            : known ? $"'{name}'을(를) 등록했습니다."
-            : $"'{name}'을(를) 등록했습니다. 진행 중 공고의 면허 제한에는 없는 이름이니 철자를 확인하세요.";
-        newLicense = "";
+            : options.Any(o => o.Name == name) ? $"'{name}'을(를) 등록했습니다."
+            : $"'{name}'을(를) 등록했습니다. 진행 중 공고의 면허 제한에는 없는 이름이라 지금은 맞는 공고가 없습니다.";
+        newLicense = unknownName = "";
+        suggestions = [];
         await LoadAsync();
         busy = false;
+    }
+
+    private IReadOnlyList<string> Suggest(string name) =>
+        LicenseNameSuggestions.For(name, options.Select(o => o.Name).Where(n => info?.LicenseNames.Contains(n) != true));
+
+    private void ClearSuggestion()
+    {
+        unknownName = "";
+        suggestions = [];
     }
 
     private async Task RemoveAsync(string name)
